@@ -13,7 +13,7 @@ class WordLoggerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Word Logger',
+      title: 'Bunyan Life Logging',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -81,7 +81,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   Future<File> _getFile() async {
     final directory = await getApplicationDocumentsDirectory();
-    return File('${directory.path}/word_log.csv');
+    return File('${directory.path}/bunyan.csv');
   }
 
   Future<void> _loadEntries() async {
@@ -161,6 +161,46 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     });
   }
 
+  Future<void> _resetData() async {
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Reset All Data'),
+          content: Text(
+            'Are you sure you want to delete all entries? This cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: Text('Delete All'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldReset == true) {
+      try {
+        final file = await _getFile();
+        if (await file.exists()) {
+          await file.delete();
+        }
+        setState(() {
+          _entries.clear();
+        });
+        _showError("Data reset successfully");
+      } catch (e) {
+        _showError('Error resetting data: $e');
+      }
+    }
+  }
+
   Future<void> _exportData() async {
     try {
       final file = await _getFile();
@@ -182,8 +222,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Word Logger'),
+        title: Text('Bunyan Life Logging'),
         actions: [
+          IconButton(
+            icon: Icon(Icons.delete_forever),
+            onPressed: _resetData,
+            tooltip: 'Reset Data',
+          ),
           IconButton(
             icon: Icon(Icons.share),
             onPressed: _exportData,
