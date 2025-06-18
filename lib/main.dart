@@ -201,6 +201,28 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _deleteEntry(int index) async {
+    try {
+      // Remove from memory
+      setState(() {
+        _entries.removeAt(index);
+      });
+
+      // Rewrite the entire CSV file
+      final file = await _getFile();
+      final csvContent = _entries.map((entry) => entry.toCsv()).join('\n');
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString(''); // Empty file if no entries
+      }
+
+      _showError("Entry deleted");
+    } catch (e) {
+      _showError('Error deleting entry: $e');
+    }
+  }
+
   Future<void> _exportData() async {
     try {
       final file = await _getFile();
@@ -316,16 +338,27 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     itemCount: _entries.length,
                     itemBuilder: (context, index) {
                       final entry = _entries[index];
-                      return ListTile(
-                        title: Text(entry.word),
-                        subtitle: Text(
-                          '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} '
-                          '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
-                          '${entry.timestamp.minute.toString().padLeft(2, '0')}',
+                      return Dismissible(
+                        key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          color: Colors.red,
+                          alignment: Alignment.centerRight,
+                          padding: EdgeInsets.only(right: 20),
+                          child: Icon(Icons.delete, color: Colors.white),
                         ),
-                        trailing: Text(
-                          '${DateTime.now().difference(entry.timestamp).inDays}d ago',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        onDismissed: (direction) => _deleteEntry(index),
+                        child: ListTile(
+                          title: Text(entry.word),
+                          subtitle: Text(
+                            '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} '
+                            '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
+                            '${entry.timestamp.minute.toString().padLeft(2, '0')}',
+                          ),
+                          trailing: Text(
+                            '${DateTime.now().difference(entry.timestamp).inDays}d ago',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
                         ),
                       );
                     },
