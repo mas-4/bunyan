@@ -53,7 +53,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   List<WordEntry> _entries = [];
-  List<String> _suggestions = [];
+  List<Map<String, dynamic>> _suggestions = [];
   bool _showSuggestions = false;
   bool _isLoading = true;
 
@@ -77,6 +77,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+  String _formatTime(DateTime dateTime) {
+    int hour = dateTime.hour;
+    String period = hour >= 12 ? 'PM' : 'AM';
+
+    if (hour == 0) {
+      hour = 12; // Midnight = 12 AM
+    } else if (hour > 12) {
+      hour = hour - 12; // Convert to 12-hour
+    }
+
+    String minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute $period';
   }
 
   Widget _buildEntryTile(WordEntry entry, int index) {
@@ -104,12 +117,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       child: ListTile(
         title: Text(entry.word),
         subtitle: Text(
-          '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} '
-          '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
-          '${entry.timestamp.minute.toString().padLeft(2, '0')}',
+          '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
+              '${_formatTime(entry.timestamp)}',
         ),
         trailing: Text(
-          '${DateTime.now().difference(entry.timestamp).inDays}d ago',
+              () {
+            final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
+            return daysAgo == 0 ? 'Today' : '${daysAgo}d ago';
+          }(),
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
@@ -180,27 +195,34 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       return;
     }
 
-    // Get unique words that start with the input, sorted by most recent
     final matchingEntries = _entries
         .where((entry) => entry.word.toLowerCase().contains(text))
         .toList();
 
-    // Remove duplicates while preserving order (most recent first)
-    final uniqueWords = <String>[];
+    final suggestionData = <Map<String, dynamic>>[];
     final seen = <String>{};
 
     for (final entry in matchingEntries) {
       if (!seen.contains(entry.word.toLowerCase())) {
         seen.add(entry.word.toLowerCase());
-        uniqueWords.add(entry.word);
+
+        final count = _entries
+            .where((e) => e.word.toLowerCase() == entry.word.toLowerCase())
+            .length;
+
+        suggestionData.add({
+          'word': entry.word,
+          'count': count,
+        });
       }
     }
 
     setState(() {
-      _suggestions = uniqueWords.take(5).toList(); // Limit to 5 suggestions
-      _showSuggestions = uniqueWords.isNotEmpty;
+      _suggestions = suggestionData.take(5).toList();
+      _showSuggestions = suggestionData.isNotEmpty;
     });
   }
+
 
   Future<void> _resetData() async {
     final shouldReset = await showDialog<bool>(
@@ -310,7 +332,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   controller: _controller,
                   focusNode: _focusNode,
                   decoration: InputDecoration(
-                    labelText: 'Enter a word',
+                    labelText: 'Enter a log',
                     border: OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(Icons.add),
@@ -320,7 +342,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   onSubmitted: _addEntry,
                   autofocus: true,
                 ),
-                // Suggestions
                 if (_showSuggestions)
                   Container(
                     margin: EdgeInsets.only(top: 4),
@@ -332,10 +353,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                       children: _suggestions.map((suggestion) {
                         return ListTile(
                           dense: true,
-                          title: Text(suggestion),
+                          title: Text(suggestion['word']),
+                          trailing: Text('${suggestion['count']}'),
                           onTap: () {
-                            _controller.text = suggestion;
-                            _addEntry(suggestion);
+                            _controller.text = suggestion['word'];
+                            _addEntry(suggestion['word']);
                           },
                         );
                       }).toList(),
@@ -345,7 +367,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ),
           ),
 
-          // Stats
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
