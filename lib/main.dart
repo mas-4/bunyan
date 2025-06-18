@@ -79,6 +79,43 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Widget _buildEntryTile(WordEntry entry, int index) {
+    return Dismissible(
+      key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
+      background: Container(
+        color: Colors.green,
+        alignment: Alignment.centerLeft,
+        padding: EdgeInsets.only(left: 20),
+        child: Icon(Icons.add, color: Colors.white),
+      ),
+      secondaryBackground: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: 20),
+        child: Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (direction) {
+        if (direction == DismissDirection.endToStart) {
+          _deleteEntry(index);
+        } else if (direction == DismissDirection.startToEnd) {
+          _addEntry(entry.word);
+        }
+      },
+      child: ListTile(
+        title: Text(entry.word),
+        subtitle: Text(
+          '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} '
+          '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
+          '${entry.timestamp.minute.toString().padLeft(2, '0')}',
+        ),
+        trailing: Text(
+          '${DateTime.now().difference(entry.timestamp).inDays}d ago',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
+
   Future<File> _getFile() async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/bunyan.csv');
@@ -92,7 +129,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final lines = contents.split('\n').where((line) => line.isNotEmpty);
 
         setState(() {
-          _entries = lines.map((line) => WordEntry.fromCsv(line)).toList();
+          _entries = lines
+              .map((line) => WordEntry.fromCsv(line))
+              .toList()
+              .reversed
+              .toList();
           _isLoading = false;
         });
       } else {
@@ -141,7 +182,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     // Get unique words that start with the input, sorted by most recent
     final matchingEntries = _entries
-        .where((entry) => entry.word.toLowerCase().startsWith(text))
+        .where((entry) => entry.word.toLowerCase().contains(text))
         .toList();
 
     // Remove duplicates while preserving order (most recent first)
@@ -210,7 +251,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       // Rewrite the entire CSV file
       final file = await _getFile();
-      final csvContent = _entries.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
       } else {
@@ -338,29 +379,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     itemCount: _entries.length,
                     itemBuilder: (context, index) {
                       final entry = _entries[index];
-                      return Dismissible(
-                        key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          color: Colors.red,
-                          alignment: Alignment.centerRight,
-                          padding: EdgeInsets.only(right: 20),
-                          child: Icon(Icons.delete, color: Colors.white),
-                        ),
-                        onDismissed: (direction) => _deleteEntry(index),
-                        child: ListTile(
-                          title: Text(entry.word),
-                          subtitle: Text(
-                            '${entry.timestamp.day}/${entry.timestamp.month}/${entry.timestamp.year} '
-                            '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
-                            '${entry.timestamp.minute.toString().padLeft(2, '0')}',
-                          ),
-                          trailing: Text(
-                            '${DateTime.now().difference(entry.timestamp).inDays}d ago',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      );
+                      return _buildEntryTile(entry, index);
                     },
                   ),
           ),
