@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
 void main() {
@@ -78,6 +79,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
+
   String _formatTime(DateTime dateTime) {
     int hour = dateTime.hour;
     String period = hour >= 12 ? 'PM' : 'AM';
@@ -118,15 +120,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         title: Text(entry.word),
         subtitle: Text(
           '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
-              '${_formatTime(entry.timestamp)}',
+          '${_formatTime(entry.timestamp)}',
         ),
-        trailing: Text(
-              () {
-            final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
-            return daysAgo == 0 ? 'Today' : '${daysAgo}d ago';
-          }(),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        trailing: Text(() {
+          final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
+          return daysAgo == 0 ? 'Today' : '${daysAgo}d ago';
+        }(), style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }
@@ -210,10 +209,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             .where((e) => e.word.toLowerCase() == entry.word.toLowerCase())
             .length;
 
-        suggestionData.add({
-          'word': entry.word,
-          'count': count,
-        });
+        suggestionData.add({'word': entry.word, 'count': count});
       }
     }
 
@@ -222,7 +218,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _showSuggestions = suggestionData.isNotEmpty;
     });
   }
-
 
   Future<void> _resetData() async {
     final shouldReset = await showDialog<bool>(
@@ -273,7 +268,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       // Rewrite the entire CSV file
       final file = await _getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
       } else {
@@ -299,6 +296,33 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _importData() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Try 'any' instead of 'custom'
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final selectedFile = File(result.files.single.path!);
+
+        // Check if it's actually a CSV by reading first line
+        final contents = await selectedFile.readAsString();
+        if (!contents.contains('","')) {
+          _showError("Selected file doesn't appear to be a valid CSV");
+          return;
+        }
+
+        final targetFile = await _getFile();
+        await selectedFile.copy(targetFile.path);
+        await _loadEntries();
+
+        _showError("Import successful!");
+      }
+    } catch (e) {
+      _showError('Error importing data: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -312,6 +336,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           IconButton(
             icon: Icon(Icons.delete_forever),
             onPressed: _resetData,
+            tooltip: 'Reset Data',
+          ),
+          IconButton(
+            icon: Icon(Icons.import_export),
+            onPressed: _importData,
             tooltip: 'Reset Data',
           ),
           IconButton(
