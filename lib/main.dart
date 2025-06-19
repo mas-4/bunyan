@@ -120,12 +120,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         title: Text(entry.word),
         subtitle: Text(
           '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
-          '${_formatTime(entry.timestamp)}',
+              '${_formatTime(entry.timestamp)}',
         ),
         trailing: Text(() {
           final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
           return daysAgo == 0 ? 'Today' : '${daysAgo}d ago';
         }(), style: Theme.of(context).textTheme.bodySmall),
+        onTap: () => _editEntry(entry), // Add this line
       ),
     );
   }
@@ -133,6 +134,52 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   Future<File> _getFile() async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/bunyan.csv');
+  }
+  Future<void> _editEntry(WordEntry entryToEdit) async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditEntryScreen(
+          entry: entryToEdit,
+          onSave: (editedEntry) async {
+            await _updateEntry(entryToEdit, editedEntry);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateEntry(WordEntry oldEntry, WordEntry newEntry) async {
+    try {
+      // Find the entry in the full list
+      final actualIndex = _entries.indexWhere((e) =>
+      e.timestamp == oldEntry.timestamp && e.word == oldEntry.word);
+
+      if (actualIndex == -1) return;
+
+      // Update in memory
+      setState(() {
+        _entries[actualIndex] = newEntry;
+        // Resort by timestamp (newest first)
+        _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _displayEntries = List.from(_entries);
+      });
+
+      // Rewrite the entire CSV file
+      final file = await _getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError("Entry updated");
+    } catch (e) {
+      _showError('Error updating entry: $e');
+    }
   }
 
   Future<void> _loadEntries() async {
@@ -404,6 +451,152 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class EditEntryScreen extends StatefulWidget {
+  final WordEntry entry;
+  final Function(WordEntry) onSave;
+
+  const EditEntryScreen({super.key, required this.entry, required this.onSave});
+
+  @override
+  State<EditEntryScreen> createState() => _EditEntryScreenState();
+}
+
+class _EditEntryScreenState extends State<EditEntryScreen> {
+  late TextEditingController _wordController;
+  late DateTime _selectedDateTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _wordController = TextEditingController(text: widget.entry.word);
+    _selectedDateTime = widget.entry.timestamp;
+  }
+
+  @override
+  void dispose() {
+    _wordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+
+    if (date != null) {
+      setState(() {
+        _selectedDateTime = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          _selectedDateTime.hour,
+          _selectedDateTime.minute,
+        );
+      });
+    }
+  }
+
+  Future<void> _selectTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+    );
+
+    if (time != null) {
+      setState(() {
+        _selectedDateTime = DateTime(
+          _selectedDateTime.year,
+          _selectedDateTime.month,
+          _selectedDateTime.day,
+          time.hour,
+          time.minute,
+        );
+      });
+    }
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.year}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.day.toString().padLeft(2, '0')} ${_formatTime(dateTime)}';
+  }
+
+  String _formatTime(DateTime dateTime) {
+    int hour = dateTime.hour;
+    String period = hour >= 12 ? 'PM' : 'AM';
+    if (hour == 0) {
+      hour = 12;
+    } else if (hour > 12) {
+      hour = hour - 12;
+    }
+    String minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute $period';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Edit Entry'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              final editedEntry = WordEntry(
+                word: _wordController.text.trim(),
+                timestamp: _selectedDateTime,
+              );
+              widget.onSave(editedEntry);
+              Navigator.pop(context);
+            },
+            child: Text('Save', style: TextStyle(color: Colors.blue)),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _wordController,
+              decoration: InputDecoration(
+                labelText: 'Entry Text',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            SizedBox(height: 20),
+            Text('Date & Time', style: Theme.of(context).textTheme.titleMedium),
+            SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: Text('Date'),
+                      subtitle: Text('${_selectedDateTime.year}/${_selectedDateTime.month.toString().padLeft(2, '0')}/${_selectedDateTime.day.toString().padLeft(2, '0')}'),
+                      trailing: Icon(Icons.calendar_today),
+                      onTap: _selectDate,
+                    ),
+                    ListTile(
+                      title: Text('Time'),
+                      subtitle: Text(_formatTime(_selectedDateTime)),
+                      trailing: Icon(Icons.access_time),
+                      onTap: _selectTime,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
