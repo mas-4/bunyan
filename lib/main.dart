@@ -24,12 +24,12 @@ class WordLoggerApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      themeMode: ThemeMode.system, // Follows system setting
+      themeMode: ThemeMode.system,
+      // Follows system setting
       home: WordLoggerHome(),
     );
   }
 }
-
 
 class WordEntry {
   final String word;
@@ -127,7 +127,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         title: Text(entry.word),
         subtitle: Text(
           '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
-              '${_formatTime(entry.timestamp)}',
+          '${_formatTime(entry.timestamp)}',
         ),
         trailing: Text(() {
           final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
@@ -142,6 +142,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/bunyan.csv');
   }
+
   Future<void> _editEntry(WordEntry entryToEdit) async {
     Navigator.push(
       context,
@@ -159,8 +160,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   Future<void> _updateEntry(WordEntry oldEntry, WordEntry newEntry) async {
     try {
       // Find the entry in the full list
-      final actualIndex = _entries.indexWhere((e) =>
-      e.timestamp == oldEntry.timestamp && e.word == oldEntry.word);
+      final actualIndex = _entries.indexWhere(
+        (e) => e.timestamp == oldEntry.timestamp && e.word == oldEntry.word,
+      );
 
       if (actualIndex == -1) return;
 
@@ -584,7 +586,9 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                   children: [
                     ListTile(
                       title: Text('Date'),
-                      subtitle: Text('${_selectedDateTime.year}/${_selectedDateTime.month.toString().padLeft(2, '0')}/${_selectedDateTime.day.toString().padLeft(2, '0')}'),
+                      subtitle: Text(
+                        '${_selectedDateTime.year}/${_selectedDateTime.month.toString().padLeft(2, '0')}/${_selectedDateTime.day.toString().padLeft(2, '0')}',
+                      ),
                       trailing: Icon(Icons.calendar_today),
                       onTap: _selectDate,
                     ),
