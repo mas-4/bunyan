@@ -19,10 +19,17 @@ class WordLoggerApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      themeMode: ThemeMode.system, // Follows system setting
       home: WordLoggerHome(),
     );
   }
 }
+
 
 class WordEntry {
   final String word;
