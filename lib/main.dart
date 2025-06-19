@@ -523,10 +523,6 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     }
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.day.toString().padLeft(2, '0')} ${_formatTime(dateTime)}';
-  }
-
   String _formatTime(DateTime dateTime) {
     int hour = dateTime.hour;
     String period = hour >= 12 ? 'PM' : 'AM';
