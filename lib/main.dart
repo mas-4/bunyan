@@ -89,19 +89,17 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   String _formatTime(DateTime dateTime) {
     int hour = dateTime.hour;
     String period = hour >= 12 ? 'PM' : 'AM';
-
     if (hour == 0) {
       hour = 12; // Midnight = 12 AM
     } else if (hour > 12) {
       hour = hour - 12; // Convert to 12-hour
     }
-
     String minute = dateTime.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';
   }
+
   String _formatDaysAgo(DateTime timestamp) {
     final daysAgo = DateTime.now().difference(timestamp).inDays;
-
     if (daysAgo == 0) {
       // Less than 24 hours - check if it's actually today or yesterday
       if (timestamp.day == DateTime.now().day) {
@@ -110,13 +108,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         return 'Yesterday';
       }
     }
-
     return '${daysAgo}d ago';
   }
 
   Widget _buildEntryTile(WordEntry entry, int index) {
+    final y = entry.timestamp.year;
+    final m = entry.timestamp.month.toString().padLeft(2, '0');
+    final d = entry.timestamp.day.toString().padLeft(2, '0');
     return Dismissible(
       key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
+      dismissThresholds: const {
+        DismissDirection.endToStart: 0.7,
+        DismissDirection.startToEnd: 0.7,
+      },
       background: Container(
         color: Colors.green,
         alignment: Alignment.centerLeft,
@@ -131,7 +135,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       ),
       onDismissed: (direction) {
         if (direction == DismissDirection.endToStart) {
-          _deleteEntry(entry); // Pass the entry, not the index
+          _deleteEntry(entry);
         } else if (direction == DismissDirection.startToEnd) {
           _addEntry(entry.word);
         }
@@ -139,14 +143,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       child: ListTile(
         title: Text(entry.word),
-        subtitle: Text(
-          '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
-          '${_formatTime(entry.timestamp)}',
-        ),
+        subtitle: Text('$y/$m/$d ${_formatTime(entry.timestamp)}'),
         trailing: Text(() {
           return _formatDaysAgo(entry.timestamp);
         }(), style: Theme.of(context).textTheme.bodySmall),
-        onTap: () => _editEntry(entry), // Add this line
+        onTap: () => _editEntry(entry),
       ),
     );
   }
@@ -179,7 +180,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       if (actualIndex == -1) return;
 
-      // Update in memory
       setState(() {
         _entries[actualIndex] = newEntry;
         // Resort by timestamp (newest first)
@@ -275,14 +275,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   Future<void> _resetData() async {
+    final c = Text(
+      "Are you sure you want to delete all entries? This cannot be undone.",
+    );
     final shouldReset = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Reset All Data'),
-          content: Text(
-            'Are you sure you want to delete all entries? This cannot be undone.',
-          ),
+          content: c,
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -298,20 +299,20 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       },
     );
 
-    if (shouldReset == true) {
-      try {
-        final file = await _getFile();
-        if (await file.exists()) {
-          await file.delete();
-        }
-        setState(() {
-          _entries.clear();
-          _displayEntries.clear();
-        });
-        _showError("Data reset successfully");
-      } catch (e) {
-        _showError('Error resetting data: $e');
-      }
+    if (shouldReset == false) {
+      return;
+    }
+    try {
+      final file = await _getFile();
+      if (await file.exists()) await file.delete();
+
+      setState(() {
+        _entries.clear();
+        _displayEntries.clear();
+      });
+      _showError("Data reset successfully");
+    } catch (e) {
+      _showError('Error resetting data: $e');
     }
   }
 
@@ -359,25 +360,25 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   Future<void> _importData() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Try 'any' instead of 'custom'
+        type: FileType.any,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final selectedFile = File(result.files.single.path!);
+      if (result == null || result.files.single.path == null) return;
 
-        // Check if it's actually a CSV by reading first line
-        final contents = await selectedFile.readAsString();
-        if (!contents.contains('","')) {
-          _showError("Selected file doesn't appear to be a valid CSV");
-          return;
-        }
+      final selectedFile = File(result.files.single.path!);
 
-        final targetFile = await _getFile();
-        await selectedFile.copy(targetFile.path);
-        await _loadEntries();
-
-        _showError("Import successful!");
+      // Check if it's actually a CSV by reading first line
+      final contents = await selectedFile.readAsString();
+      if (!contents.contains('","')) {
+        _showError("Selected file doesn't appear to be a valid CSV");
+        return;
       }
+
+      final targetFile = await _getFile();
+      await selectedFile.copy(targetFile.path);
+      await _loadEntries();
+
+      _showError("Import successful!");
     } catch (e) {
       _showError('Error importing data: $e');
     }
@@ -388,6 +389,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     if (_isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final uniqueWords = _entries
+        .map((e) => e.word.toLowerCase())
+        .toSet()
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -445,7 +450,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 Text(
-                  'Unique words: ${_entries.map((e) => e.word.toLowerCase()).toSet().length}',
+                  'Unique words: $uniqueWords',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -513,17 +518,16 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
       lastDate: DateTime.now(),
     );
 
-    if (date != null) {
-      setState(() {
-        _selectedDateTime = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          _selectedDateTime.hour,
-          _selectedDateTime.minute,
-        );
-      });
-    }
+    if (date == null) return;
+    setState(() {
+      _selectedDateTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        _selectedDateTime.hour,
+        _selectedDateTime.minute,
+      );
+    });
   }
 
   Future<void> _selectTime() async {
@@ -559,6 +563,9 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final y = _selectedDateTime.year;
+    final m = _selectedDateTime.month.toString().padLeft(2, '0');
+    final d = _selectedDateTime.day.toString().padLeft(2, '0');
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Entry'),
@@ -599,9 +606,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                   children: [
                     ListTile(
                       title: Text('Date'),
-                      subtitle: Text(
-                        '${_selectedDateTime.year}/${_selectedDateTime.month.toString().padLeft(2, '0')}/${_selectedDateTime.day.toString().padLeft(2, '0')}',
-                      ),
+                      subtitle: Text('$y/$m/$d'),
                       trailing: Icon(Icons.calendar_today),
                       onTap: _selectDate,
                     ),
