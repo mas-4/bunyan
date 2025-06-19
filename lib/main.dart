@@ -110,16 +110,38 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
     return '${daysAgo}d ago';
   }
-
   Widget _buildEntryTile(WordEntry entry, int index) {
-    final y = entry.timestamp.year;
-    final m = entry.timestamp.month.toString().padLeft(2, '0');
-    final d = entry.timestamp.day.toString().padLeft(2, '0');
     return Dismissible(
       key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
       dismissThresholds: const {
-        DismissDirection.endToStart: 0.7,
-        DismissDirection.startToEnd: 0.7,
+        DismissDirection.endToStart: 0.9,
+        DismissDirection.startToEnd: 0.9,
+      },
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.endToStart) {
+          // Confirm delete
+          return await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text('Delete Entry'),
+              content: Text('Delete "${entry.word}"?'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text('Cancel')
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: Text('Delete'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Add again - no confirmation needed
+          return true;
+        }
       },
       background: Container(
         color: Colors.green,
@@ -140,18 +162,20 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           _addEntry(entry.word);
         }
       },
-
       child: ListTile(
         title: Text(entry.word),
-        subtitle: Text('$y/$m/$d ${_formatTime(entry.timestamp)}'),
-        trailing: Text(() {
-          return _formatDaysAgo(entry.timestamp);
-        }(), style: Theme.of(context).textTheme.bodySmall),
+        subtitle: Text(
+          '${entry.timestamp.year}/${entry.timestamp.month.toString().padLeft(2, '0')}/${entry.timestamp.day.toString().padLeft(2, '0')} '
+              '${_formatTime(entry.timestamp)}',
+        ),
+        trailing: Text(
+          _formatDaysAgo(entry.timestamp),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
         onTap: () => _editEntry(entry),
       ),
     );
   }
-
   Future<File> _getFile() async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/bunyan.csv');
