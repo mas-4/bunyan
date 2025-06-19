@@ -99,6 +99,20 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     String minute = dateTime.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';
   }
+  String _formatDaysAgo(DateTime timestamp) {
+    final daysAgo = DateTime.now().difference(timestamp).inDays;
+
+    if (daysAgo == 0) {
+      // Less than 24 hours - check if it's actually today or yesterday
+      if (timestamp.day == DateTime.now().day) {
+        return 'Today';
+      } else {
+        return 'Yesterday';
+      }
+    }
+
+    return '${daysAgo}d ago';
+  }
 
   Widget _buildEntryTile(WordEntry entry, int index) {
     return Dismissible(
@@ -130,8 +144,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           '${_formatTime(entry.timestamp)}',
         ),
         trailing: Text(() {
-          final daysAgo = DateTime.now().difference(entry.timestamp).inDays;
-          return daysAgo == 0 ? 'Today' : '${daysAgo}d ago';
+          return _formatDaysAgo(entry.timestamp);
         }(), style: Theme.of(context).textTheme.bodySmall),
         onTap: () => _editEntry(entry), // Add this line
       ),
