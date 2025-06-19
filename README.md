@@ -8,7 +8,7 @@ Type a word, get a timestamped entry. That's it.
 Perfect for tracking food intake, symptoms, mood, or any recurring events you want to analyze later. No complicated forms or categories - just quick, consistent data capture when you need it.
 
 ## Features
-- One-word instant logging with automatic timestamps
+- String instant logging with automatic timestamps
 - Filter and search entries
 - Export to CSV for analysis
 - Clean, distraction-free interface
