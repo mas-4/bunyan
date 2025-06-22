@@ -519,17 +519,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                           dense: true,
                           title: Text(suggestion),
                           onTap: () {
-                            _controller.text = '$suggestion ';
+                            // Remove the tag character that triggered the suggestions
+                            final currentText = _controller.text;
+                            final textWithoutTag = currentText.substring(0, currentText.length - 1);
+
+                            // Append the selected tag
+                            _controller.text = '$textWithoutTag$suggestion ';
+
+                            _controller.selection = TextSelection.collapsed(
+                              offset: _controller.text.length,
+                            );
 
                             setState(() {
                               _showSuggestions = false;
-                            });
-
-                            // Set cursor position after the widget rebuilds
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              _controller.selection = TextSelection.collapsed(
-                                offset: _controller.text.length,
-                              );
                             });
                           },
 
