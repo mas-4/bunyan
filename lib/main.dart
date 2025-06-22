@@ -492,6 +492,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 TextField(
                   controller: _controller,
                   focusNode: _focusNode,
+                  maxLines: null,
+                  minLines: 1,
                   decoration: InputDecoration(
                     labelText: 'Enter a log',
                     border: OutlineInputBorder(),
@@ -675,6 +677,8 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
+              maxLines: null,
+              minLines: 1,
               controller: _wordController,
               decoration: InputDecoration(
                 labelText: 'Entry Text',
