@@ -105,6 +105,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   List<WordEntry> _entries = [];
   List<WordEntry> _displayEntries = [];
   bool _isLoading = true;
+  List<String> _suggestions = [];
+  bool _showSuggestions = false;
 
   @override
   void initState() {
@@ -224,23 +226,53 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   void _filterEntries() {
-    final text = _controller.text.toLowerCase();
+    final text = _controller.text;
 
+    // Check if last character is a tag symbol
+    if (text.isNotEmpty && '!@#^'.contains(text[text.length - 1])) {
+      _showTagSuggestions(text[text.length - 1]);
+      return;
+    }
+
+    // Regular filtering logic...
     if (text.isEmpty) {
       setState(() {
         _displayEntries = List.from(_entries);
+        _showSuggestions = false;
       });
       return;
     }
 
     final matchingEntries = _entries
-        .where((entry) => entry.word.toLowerCase().contains(text))
+        .where((entry) => entry.word.toLowerCase().contains(text.toLowerCase()))
         .toList();
 
     setState(() {
       _displayEntries = matchingEntries;
+      _showSuggestions = false;
     });
   }
+
+  void _showTagSuggestions(String tagChar) {
+    // Extract just the tagged words (the part with the tag)
+    final taggedWords = _entries
+        .where((entry) => entry.word.contains(tagChar))
+        .map((entry) {
+      // Extract the tagged word from the entry
+      final words = entry.word.split(' ');
+      return words.firstWhere((word) => word.startsWith(tagChar), orElse: () => '');
+    })
+        .where((word) => word.isNotEmpty)
+        .toSet() // Remove duplicates
+        .toList();
+
+    setState(() {
+      _suggestions = taggedWords.take(5).toList();
+      _showSuggestions = taggedWords.isNotEmpty;
+      _displayEntries = List.from(_entries);
+    });
+  }
+
 
   Future<void> _resetEntries() async {
     final c = Text(
@@ -471,6 +503,38 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   onSubmitted: _addEntry,
                   autofocus: true,
                 ),
+                // In the TextField section, after the TextField:
+                if (_showSuggestions)
+                  Container(
+                    margin: EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Column(
+                      children: _suggestions.map((suggestion) {
+                        return ListTile(
+                          dense: true,
+                          title: Text(suggestion),
+                          onTap: () {
+                            _controller.text = '$suggestion ';
+
+                            setState(() {
+                              _showSuggestions = false;
+                            });
+
+                            // Set cursor position after the widget rebuilds
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _controller.selection = TextSelection.collapsed(
+                                offset: _controller.text.length,
+                              );
+                            });
+                          },
+
+                        );
+                      }).toList(),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -590,6 +654,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Entry'),
+
         actions: [
           TextButton(
             onPressed: () {
@@ -617,6 +682,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
               ),
               autofocus: true,
             ),
+
             SizedBox(height: 20),
             Text('Date & Time', style: Theme.of(context).textTheme.titleMedium),
             SizedBox(height: 10),
