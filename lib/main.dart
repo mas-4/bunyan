@@ -563,7 +563,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 Text(
-                  'Unique words: $uniqueWords',
+                  'Unique entries: $uniqueWords',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
