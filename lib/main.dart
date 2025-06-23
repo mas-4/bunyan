@@ -4,6 +4,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
+const String tagLeaders = '!@#^&~+=\\|';
+
 class DateTimeFormatter {
   final DateTime dateTime;
 
@@ -14,6 +16,11 @@ class DateTimeFormatter {
     final m = dateTime.month.toString().padLeft(2, '0');
     final d = dateTime.day.toString().padLeft(2, '0');
     return '$y/$m/$d';
+  }
+
+  String get weekDay {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days[dateTime.weekday - 1]; // weekday is 1-7, array is 0-6
   }
 
   String get time {
@@ -29,16 +36,13 @@ class DateTimeFormatter {
   }
 
   String get daysAgo {
-    final daysAgo = DateTime.now().difference(dateTime).inDays;
-    if (daysAgo == 0) {
-      // Less than 24 hours - check if it's actually today or yesterday
-      if (dateTime.day == DateTime.now().day) {
-        return 'Today';
-      } else {
-        return 'Yesterday';
-      }
+    final today = DateTime.now().day;
+    if (dateTime.day == today) {
+      return 'Today';
+    } else if (today - dateTime.day == 1) {
+      return 'Yesterday';
     }
-    return '${daysAgo}d ago';
+    return '${today - dateTime.day}d ago';
   }
 }
 
@@ -185,7 +189,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       },
       child: ListTile(
         title: Text(entry.word),
-        subtitle: Text('${dt.date} ${dt.time}'),
+        subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
         trailing: Text(
           dt.daysAgo,
           style: Theme.of(context).textTheme.bodySmall,
@@ -229,8 +233,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final text = _controller.text;
 
     // Check if last character is a tag symbol
-    if (text.isNotEmpty && '!@#^'.contains(text[text.length - 1])) {
-      _showTagSuggestions(text[text.length - 1]);
+    if (text.isNotEmpty && tagLeaders.contains(text[text.length - 1])) {
+      final taggedWords = _showTagSuggestions(text[text.length - 1]);
+
+      setState(() {
+        _suggestions = taggedWords.take(5).toList();
+        _showSuggestions = taggedWords.isNotEmpty;
+        _displayEntries = List.from(_entries);
+      });
       return;
     }
 
@@ -253,26 +263,22 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     });
   }
 
-  void _showTagSuggestions(String tagChar) {
+  List<String> _showTagSuggestions(String tagChar) {
     // Extract just the tagged words (the part with the tag)
-    final taggedWords = _entries
+    return _entries
         .where((entry) => entry.word.contains(tagChar))
         .map((entry) {
-      // Extract the tagged word from the entry
-      final words = entry.word.split(' ');
-      return words.firstWhere((word) => word.startsWith(tagChar), orElse: () => '');
-    })
+          // Extract the tagged word from the entry
+          final words = entry.word.split(' ');
+          return words.firstWhere(
+            (word) => word.startsWith(tagChar),
+            orElse: () => '',
+          );
+        })
         .where((word) => word.isNotEmpty)
         .toSet() // Remove duplicates
         .toList();
-
-    setState(() {
-      _suggestions = taggedWords.take(5).toList();
-      _showSuggestions = taggedWords.isNotEmpty;
-      _displayEntries = List.from(_entries);
-    });
   }
-
 
   Future<void> _resetEntries() async {
     final c = Text(
@@ -323,6 +329,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           onSave: (editedEntry) async {
             await _updateEntry(entryToEdit, editedEntry);
           },
+          parentState: this,
         ),
       ),
     );
@@ -494,6 +501,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   focusNode: _focusNode,
                   maxLines: null,
                   minLines: 1,
+                  textInputAction: TextInputAction.send,
                   decoration: InputDecoration(
                     labelText: 'Enter a log',
                     border: OutlineInputBorder(),
@@ -521,7 +529,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                           onTap: () {
                             // Remove the tag character that triggered the suggestions
                             final currentText = _controller.text;
-                            final textWithoutTag = currentText.substring(0, currentText.length - 1);
+                            final textWithoutTag = currentText.substring(
+                              0,
+                              currentText.length - 1,
+                            );
 
                             // Append the selected tag
                             _controller.text = '$textWithoutTag$suggestion ';
@@ -534,7 +545,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                               _showSuggestions = false;
                             });
                           },
-
                         );
                       }).toList(),
                     ),
@@ -588,9 +598,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
 class EditEntryScreen extends StatefulWidget {
   final WordEntry entry;
+  final WordLoggerHomeState parentState; // Pass the parent state
   final Function(WordEntry) onSave;
 
-  const EditEntryScreen({super.key, required this.entry, required this.onSave});
+  const EditEntryScreen({
+    super.key,
+    required this.entry,
+    required this.parentState, // Add this
+    required this.onSave,
+  });
 
   @override
   State<EditEntryScreen> createState() => _EditEntryScreenState();
@@ -599,12 +615,15 @@ class EditEntryScreen extends StatefulWidget {
 class _EditEntryScreenState extends State<EditEntryScreen> {
   late TextEditingController _wordController;
   late DateTime _selectedDateTime;
+  List<String> _suggestions = [];
+  bool _showSuggestions = false;
 
   @override
   void initState() {
     super.initState();
     _wordController = TextEditingController(text: widget.entry.word);
     _selectedDateTime = widget.entry.timestamp;
+    _wordController.addListener(_checkForTags);
   }
 
   @override
@@ -639,15 +658,32 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
     );
 
-    if (time != null) {
+    if (time == null) return;
+    setState(() {
+      _selectedDateTime = DateTime(
+        _selectedDateTime.year,
+        _selectedDateTime.month,
+        _selectedDateTime.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  void _checkForTags() {
+    final text = _wordController.text;
+
+    if (text.isNotEmpty && tagLeaders.contains(text[text.length - 1])) {
+      final suggestions = widget.parentState._showTagSuggestions(
+        text[text.length - 1],
+      );
       setState(() {
-        _selectedDateTime = DateTime(
-          _selectedDateTime.year,
-          _selectedDateTime.month,
-          _selectedDateTime.day,
-          time.hour,
-          time.minute,
-        );
+        _suggestions = suggestions.take(5).toList();
+        _showSuggestions = suggestions.isNotEmpty;
+      });
+    } else {
+      setState(() {
+        _showSuggestions = false;
       });
     }
   }
@@ -681,6 +717,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
             TextField(
               maxLines: null,
               minLines: 1,
+              textInputAction: TextInputAction.send,
               controller: _wordController,
               decoration: InputDecoration(
                 labelText: 'Entry Text',
@@ -688,6 +725,41 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
               ),
               autofocus: true,
             ),
+            // Add this right after the TextField widget, before the SizedBox(height: 20)
+            if (_showSuggestions)
+              Container(
+                margin: EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  children: _suggestions.map((suggestion) {
+                    return ListTile(
+                      dense: true,
+                      title: Text(suggestion),
+                      onTap: () {
+                        // Remove the tag character that triggered the suggestions
+                        final currentText = _wordController.text;
+                        final textWithoutTag = currentText.substring(0, currentText.length - 1);
+
+                        // Append the selected tag
+                        _wordController.text = '$textWithoutTag$suggestion ';
+
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _wordController.selection = TextSelection.collapsed(
+                            offset: _wordController.text.length,
+                          );
+                        });
+
+                        setState(() {
+                          _showSuggestions = false;
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
 
             SizedBox(height: 20),
             Text('Date & Time', style: Theme.of(context).textTheme.titleMedium),
