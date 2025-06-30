@@ -112,6 +112,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   List<String> _suggestions = [];
   bool _showSuggestions = false;
 
+  // Bulk edit variables
+  bool _bulkEditMode = false;
+  Set<int> _selectedIndices = {};
+
   @override
   void initState() {
     super.initState();
@@ -134,8 +138,130 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  void _enterBulkEditMode(WordEntry entry) {
+    final actualIndex = _entries.indexOf(entry);
+    setState(() {
+      _bulkEditMode = true;
+      _selectedIndices.add(actualIndex);
+    });
+  }
+
+  void _exitBulkEditMode() {
+    setState(() {
+      _bulkEditMode = false;
+      _selectedIndices.clear();
+    });
+  }
+
+  Future<void> _bulkEditDateTime() async {
+    if (_selectedIndices.isEmpty) return;
+
+    final now = DateTime.now();
+
+    // Date picker
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+    );
+
+    if (date == null) return;
+
+    // Time picker
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now),
+    );
+
+    if (time == null) return;
+
+    final newDateTime = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    try {
+      // Update selected entries
+      final indicesToUpdate = _selectedIndices.toList()..sort();
+
+      for (int index in indicesToUpdate.reversed) {
+        final entry = _entries[index];
+        _entries[index] = WordEntry(
+          word: entry.word,
+          timestamp: newDateTime,
+        );
+      }
+
+      // Resort by timestamp (newest first)
+      _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      setState(() {
+        _displayEntries = List.from(_entries);
+      });
+
+      // Rewrite CSV file
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError("${_selectedIndices.length} entries updated");
+      _exitBulkEditMode();
+
+    } catch (e) {
+      _showError('Error updating entries: $e');
+    }
+  }
+
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
+
+    if (_bulkEditMode) {
+      final actualIndex = _entries.indexOf(entry);
+      final isSelected = _selectedIndices.contains(actualIndex);
+
+      return ListTile(
+        leading: Checkbox(
+          value: isSelected,
+          onChanged: (bool? value) {
+            setState(() {
+              if (value == true) {
+                _selectedIndices.add(actualIndex);
+              } else {
+                _selectedIndices.remove(actualIndex);
+              }
+            });
+          },
+        ),
+        title: Text(entry.word),
+        subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
+        trailing: Text(
+          dt.daysAgo,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        onTap: () {
+          final actualIndex = _entries.indexOf(entry);
+          setState(() {
+            if (_selectedIndices.contains(actualIndex)) {
+              _selectedIndices.remove(actualIndex);
+            } else {
+              _selectedIndices.add(actualIndex);
+            }
+          });
+        },
+      );
+    }
+
     return Dismissible(
       key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
       dismissThresholds: const {
@@ -195,6 +321,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         onTap: () => _editEntry(entry),
+        onLongPress: () => _enterBulkEditMode(entry),
       ),
     );
   }
@@ -268,13 +395,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return _entries
         .where((entry) => entry.word.contains(tagChar))
         .map((entry) {
-          // Extract the tagged word from the entry
-          final words = entry.word.split(' ');
-          return words.firstWhere(
+      // Extract the tagged word from the entry
+      final words = entry.word.split(' ');
+      return words.firstWhere(
             (word) => word.startsWith(tagChar),
-            orElse: () => '',
-          );
-        })
+        orElse: () => '',
+      );
+    })
         .where((word) => word.isNotEmpty)
         .toSet() // Remove duplicates
         .toList();
@@ -339,7 +466,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     try {
       // Find the entry in the full list
       final actualIndex = _entries.indexWhere(
-        (e) => e.timestamp == oldEntry.timestamp && e.word == oldEntry.word,
+            (e) => e.timestamp == oldEntry.timestamp && e.word == oldEntry.word,
       );
 
       if (actualIndex == -1) return;
@@ -394,8 +521,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     try {
       // Find the entry in the full list
       final actualIndex = _entries.indexWhere(
-        (e) =>
-            e.timestamp == entryToDelete.timestamp &&
+            (e) =>
+        e.timestamp == entryToDelete.timestamp &&
             e.word == entryToDelete.word,
       );
 
@@ -406,9 +533,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         _displayEntries = _displayEntries
             .where(
               (e) =>
-                  e.timestamp != entryToDelete.timestamp ||
-                  e.word != entryToDelete.word,
-            )
+          e.timestamp != entryToDelete.timestamp ||
+              e.word != entryToDelete.word,
+        )
             .toList();
       });
 
@@ -470,8 +597,25 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Bunyan Life Logging'),
-        actions: [
+        title: Text(_bulkEditMode
+            ? '${_selectedIndices.length} selected'
+            : 'Bunyan Life Logging'),
+        leading: _bulkEditMode
+            ? IconButton(
+          icon: Icon(Icons.close),
+          onPressed: _exitBulkEditMode,
+        )
+            : null,
+        actions: _bulkEditMode
+            ? [
+          if (_selectedIndices.isNotEmpty)
+            IconButton(
+              icon: Icon(Icons.edit),
+              onPressed: _bulkEditDateTime,
+              tooltip: 'Edit Date/Time',
+            ),
+        ]
+            : [
           IconButton(
             icon: Icon(Icons.delete_forever),
             onPressed: _resetEntries,
@@ -480,7 +624,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           IconButton(
             icon: Icon(Icons.import_export),
             onPressed: _importData,
-            tooltip: 'Reset Data',
+            tooltip: 'Import Data',
           ),
           IconButton(
             icon: Icon(Icons.share),
@@ -576,19 +720,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           Expanded(
             child: _displayEntries.isEmpty
                 ? Center(
-                    child: Text(
-                      'No entries yet.\nStart by typing a word above!',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  )
+              child: Text(
+                'No entries yet.\nStart by typing a word above!',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            )
                 : ListView.builder(
-                    itemCount: _displayEntries.length,
-                    itemBuilder: (context, index) {
-                      final entry = _displayEntries[index];
-                      return _buildEntry(entry, index);
-                    },
-                  ),
+              itemCount: _displayEntries.length,
+              itemBuilder: (context, index) {
+                final entry = _displayEntries[index];
+                return _buildEntry(entry, index);
+              },
+            ),
           ),
         ],
       ),
