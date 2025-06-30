@@ -190,10 +190,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       for (int index in indicesToUpdate.reversed) {
         final entry = _entries[index];
-        _entries[index] = WordEntry(
-          word: entry.word,
-          timestamp: newDateTime,
-        );
+        _entries[index] = WordEntry(word: entry.word, timestamp: newDateTime);
       }
 
       // Resort by timestamp (newest first)
@@ -217,7 +214,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       _showError("${_selectedIndices.length} entries updated");
       _exitBulkEditMode();
-
     } catch (e) {
       _showError('Error updating entries: $e');
     }
@@ -395,13 +391,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return _entries
         .where((entry) => entry.word.contains(tagChar))
         .map((entry) {
-      // Extract the tagged word from the entry
-      final words = entry.word.split(' ');
-      return words.firstWhere(
+          // Extract the tagged word from the entry
+          final words = entry.word.split(' ');
+          return words.firstWhere(
             (word) => word.startsWith(tagChar),
-        orElse: () => '',
-      );
-    })
+            orElse: () => '',
+          );
+        })
         .where((word) => word.isNotEmpty)
         .toSet() // Remove duplicates
         .toList();
@@ -466,7 +462,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     try {
       // Find the entry in the full list
       final actualIndex = _entries.indexWhere(
-            (e) => e.timestamp == oldEntry.timestamp && e.word == oldEntry.word,
+        (e) => e.timestamp == oldEntry.timestamp && e.word == oldEntry.word,
       );
 
       if (actualIndex == -1) return;
@@ -521,8 +517,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     try {
       // Find the entry in the full list
       final actualIndex = _entries.indexWhere(
-            (e) =>
-        e.timestamp == entryToDelete.timestamp &&
+        (e) =>
+            e.timestamp == entryToDelete.timestamp &&
             e.word == entryToDelete.word,
       );
 
@@ -533,9 +529,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         _displayEntries = _displayEntries
             .where(
               (e) =>
-          e.timestamp != entryToDelete.timestamp ||
-              e.word != entryToDelete.word,
-        )
+                  e.timestamp != entryToDelete.timestamp ||
+                  e.word != entryToDelete.word,
+            )
             .toList();
       });
 
@@ -597,41 +593,40 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_bulkEditMode
-            ? '${_selectedIndices.length} selected'
-            : 'Bunyan Life Logging'),
+        title: Text(
+          _bulkEditMode
+              ? '${_selectedIndices.length} selected'
+              : 'Bunyan Life Logging',
+        ),
         leading: _bulkEditMode
-            ? IconButton(
-          icon: Icon(Icons.close),
-          onPressed: _exitBulkEditMode,
-        )
+            ? IconButton(icon: Icon(Icons.close), onPressed: _exitBulkEditMode)
             : null,
         actions: _bulkEditMode
             ? [
-          if (_selectedIndices.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.edit),
-              onPressed: _bulkEditDateTime,
-              tooltip: 'Edit Date/Time',
-            ),
-        ]
+                if (_selectedIndices.isNotEmpty)
+                  IconButton(
+                    icon: Icon(Icons.edit),
+                    onPressed: _bulkEditDateTime,
+                    tooltip: 'Edit Date/Time',
+                  ),
+              ]
             : [
-          IconButton(
-            icon: Icon(Icons.delete_forever),
-            onPressed: _resetEntries,
-            tooltip: 'Reset Data',
-          ),
-          IconButton(
-            icon: Icon(Icons.import_export),
-            onPressed: _importData,
-            tooltip: 'Import Data',
-          ),
-          IconButton(
-            icon: Icon(Icons.share),
-            onPressed: _exportData,
-            tooltip: 'Export Data',
-          ),
-        ],
+                IconButton(
+                  icon: Icon(Icons.delete_forever),
+                  onPressed: _resetEntries,
+                  tooltip: 'Reset Data',
+                ),
+                IconButton(
+                  icon: Icon(Icons.import_export),
+                  onPressed: _importData,
+                  tooltip: 'Import Data',
+                ),
+                IconButton(
+                  icon: Icon(Icons.share),
+                  onPressed: _exportData,
+                  tooltip: 'Export Data',
+                ),
+              ],
       ),
       body: Column(
         children: [
@@ -720,19 +715,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           Expanded(
             child: _displayEntries.isEmpty
                 ? Center(
-              child: Text(
-                'No entries yet.\nStart by typing a word above!',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            )
+                    child: Text(
+                      'No entries yet.\nStart by typing a word above!',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  )
                 : ListView.builder(
-              itemCount: _displayEntries.length,
-              itemBuilder: (context, index) {
-                final entry = _displayEntries[index];
-                return _buildEntry(entry, index);
-              },
-            ),
+                    itemCount: _displayEntries.length,
+                    itemBuilder: (context, index) {
+                      final entry = _displayEntries[index];
+                      return _buildEntry(entry, index);
+                    },
+                  ),
           ),
         ],
       ),
@@ -885,7 +880,10 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                       onTap: () {
                         // Remove the tag character that triggered the suggestions
                         final currentText = _wordController.text;
-                        final textWithoutTag = currentText.substring(0, currentText.length - 1);
+                        final textWithoutTag = currentText.substring(
+                          0,
+                          currentText.length - 1,
+                        );
 
                         // Append the selected tag
                         _wordController.text = '$textWithoutTag$suggestion ';
