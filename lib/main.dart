@@ -36,13 +36,18 @@ class DateTimeFormatter {
   }
 
   String get daysAgo {
-    final today = DateTime.now().day;
-    if (dateTime.day == today) {
+    final tmp = DateTime.now();
+    final today = DateTime(tmp.year, tmp.month, tmp.day);
+    final calendarDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    final daysAgo = today.difference(calendarDate).inDays;
+
+    if (daysAgo == 0) {
       return 'Today';
-    } else if (today - dateTime.day == 1) {
+    } else if (daysAgo == 1) {
       return 'Yesterday';
     }
-    return '${today - dateTime.day}d ago';
+    return '${daysAgo}d ago';
   }
 }
 
