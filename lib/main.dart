@@ -224,6 +224,103 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _combineEntries() async {
+    if (_selectedIndices.length < 2) return;
+
+    // Show dialog to get the name for the combined entry
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Combine Entries'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Enter a name for the combined entry:'),
+            SizedBox(height: 8),
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(
+                hintText: 'e.g., fruit',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: Text('Combine'),
+          ),
+        ],
+      ),
+    );
+
+    if (name == null || name.isEmpty) return;
+
+    try {
+      // Get selected entries sorted by timestamp (oldest first for chronological order)
+      final selectedEntries = _selectedIndices
+          .map((index) => _entries[index])
+          .toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      // Create the combined entry text
+      final entryWords = selectedEntries.map((entry) => entry.word).join(', ');
+      final combinedText = '$name: $entryWords';
+
+      // Use the timestamp of the most recent selected entry
+      final latestTimestamp = selectedEntries
+          .map((entry) => entry.timestamp)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+
+      // Create new combined entry
+      final combinedEntry = WordEntry(
+        word: combinedText,
+        timestamp: latestTimestamp,
+      );
+
+      // Remove selected entries (reverse order to maintain indices)
+      final indicesToRemove = _selectedIndices.toList()..sort((a, b) => b.compareTo(a));
+      for (int index in indicesToRemove) {
+        _entries.removeAt(index);
+      }
+
+      // Add the new combined entry
+      _entries.add(combinedEntry);
+
+      // Resort by timestamp (newest first)
+      _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      setState(() {
+        _displayEntries = List.from(_entries);
+      });
+
+      // Rewrite CSV file
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError("${_selectedIndices.length} entries combined into '$name'");
+      _exitBulkEditMode();
+    } catch (e) {
+      _showError('Error combining entries: $e');
+    }
+  }
+
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
 
@@ -614,6 +711,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     onPressed: _bulkEditDateTime,
                     tooltip: 'Edit Date/Time',
                   ),
+                if (_selectedIndices.length >= 2)
+                  IconButton(
+                    icon: Icon(Icons.merge),
+                    onPressed: _combineEntries,
+                    tooltip: 'Combine Entries',
+                  ),
               ]
             : [
                 IconButton(
@@ -650,8 +753,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     labelText: 'Enter a log',
                     border: OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(Icons.add),
-                      onPressed: () => _addEntry(_controller.text),
+                      icon: Icon(Icons.clear),
+                      onPressed: () => _controller.clear(),
                     ),
                   ),
                   onSubmitted: _addEntry,
