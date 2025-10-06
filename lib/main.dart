@@ -485,8 +485,21 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         })
         .toList();
 
+    // Group by text before colon and keep only the most recent entry for each
+    final uniqueEntries = <String, WordEntry>{};
+    for (final entry in matchingEntries) {
+      final key = entry.word.split(':')[0].toLowerCase();
+      if (!uniqueEntries.containsKey(key) || 
+          entry.timestamp.isAfter(uniqueEntries[key]!.timestamp)) {
+        uniqueEntries[key] = entry;
+      }
+    }
+    
+    final uniqueList = uniqueEntries.values.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
     setState(() {
-      _displayEntries = matchingEntries;
+      _displayEntries = uniqueList;
       _showSuggestions = false;
     });
   }
