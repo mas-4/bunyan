@@ -272,7 +272,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
       // Create the combined entry text
-      final entryWords = selectedEntries.map((entry) => entry.word).join(', ');
+      final entryWords = selectedEntries.map((entry) => entry.word.replaceAll(':', ',')).join(', ');
       final combinedText = '$name: $entryWords';
 
       // Use the timestamp of the most recent selected entry
