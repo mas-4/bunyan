@@ -479,7 +479,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
 
     final matchingEntries = _entries
-        .where((entry) => entry.word.toLowerCase().contains(text.toLowerCase()))
+        .where((entry) {
+          final searchText = entry.word.split(':')[0].toLowerCase();
+          return searchText.contains(text.toLowerCase());
+        })
         .toList();
 
     setState(() {
