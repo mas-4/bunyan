@@ -116,6 +116,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   bool _isLoading = true;
   List<String> _suggestions = [];
   bool _showSuggestions = false;
+  bool _showAllMatches = false; // Toggle for showing all vs unique entries
+  bool _hasSearchText = false; // Track if search field has text
 
   // Bulk edit variables
   bool _bulkEditMode = false;
@@ -266,13 +268,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     try {
       // Get selected entries sorted by timestamp (oldest first for chronological order)
-      final selectedEntries = _selectedIndices
-          .map((index) => _entries[index])
-          .toList()
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final selectedEntries =
+          _selectedIndices.map((index) => _entries[index]).toList()
+            ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
       // Create the combined entry text
-      final entryWords = selectedEntries.map((entry) => entry.word.replaceAll(':', ',')).join(', ');
+      final entryWords = selectedEntries
+          .map((entry) => entry.word.replaceAll(':', ','))
+          .join(', ');
       final combinedText = '$name: $entryWords';
 
       // Use the timestamp of the most recent selected entry
@@ -287,7 +290,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       );
 
       // Remove selected entries (reverse order to maintain indices)
-      final indicesToRemove = _selectedIndices.toList()..sort((a, b) => b.compareTo(a));
+      final indicesToRemove = _selectedIndices.toList()
+        ..sort((a, b) => b.compareTo(a));
       for (int index in indicesToRemove) {
         _entries.removeAt(index);
       }
@@ -465,6 +469,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         _suggestions = taggedWords.take(5).toList();
         _showSuggestions = taggedWords.isNotEmpty;
         _displayEntries = List.from(_entries);
+        _hasSearchText = true;
       });
       return;
     }
@@ -474,33 +479,44 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       setState(() {
         _displayEntries = List.from(_entries);
         _showSuggestions = false;
+        _showAllMatches = false; // Reset toggle when search is cleared
+        _hasSearchText = false;
       });
       return;
     }
 
-    final matchingEntries = _entries
-        .where((entry) {
-          final searchText = entry.word.split(':')[0].toLowerCase();
-          return searchText.contains(text.toLowerCase());
-        })
-        .toList();
+    final matchingEntries = _entries.where((entry) {
+      final searchText = entry.word.split(':')[0].toLowerCase();
+      return searchText.contains(text.toLowerCase());
+    }).toList();
+
+    // If showing all matches, just use all matching entries
+    if (_showAllMatches) {
+      setState(() {
+        _displayEntries = matchingEntries;
+        _showSuggestions = false;
+        _hasSearchText = true;
+      });
+      return;
+    }
 
     // Group by text before colon and keep only the most recent entry for each
     final uniqueEntries = <String, WordEntry>{};
     for (final entry in matchingEntries) {
-      final key = entry.word.split(':')[0].toLowerCase();
-      if (!uniqueEntries.containsKey(key) || 
+      final key = entry.word.split(':')[0].trim().toLowerCase();
+      if (!uniqueEntries.containsKey(key) ||
           entry.timestamp.isAfter(uniqueEntries[key]!.timestamp)) {
         uniqueEntries[key] = entry;
       }
     }
-    
+
     final uniqueList = uniqueEntries.values.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     setState(() {
       _displayEntries = uniqueList;
       _showSuggestions = false;
+      _hasSearchText = true;
     });
   }
 
@@ -776,6 +792,23 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   onSubmitted: _addEntry,
                   autofocus: true,
                 ),
+                // Show "Show All" button when filtering text is entered
+                if (_hasSearchText && !_showSuggestions)
+                  Container(
+                    margin: EdgeInsets.only(top: 8),
+                    child: OutlinedButton.icon(
+                      icon: Icon(
+                        _showAllMatches ? Icons.filter_1 : Icons.filter_list,
+                      ),
+                      label: Text(_showAllMatches ? 'Show Unique' : 'Show All'),
+                      onPressed: () {
+                        setState(() {
+                          _showAllMatches = !_showAllMatches;
+                          _filterEntries();
+                        });
+                      },
+                    ),
+                  ),
                 // In the TextField section, after the TextField:
                 if (_showSuggestions)
                   Container(
