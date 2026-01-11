@@ -461,17 +461,39 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   void _filterEntries() {
     final text = _controller.text;
 
-    // Check if last character is a tag symbol
-    if (text.isNotEmpty && tagLeaders.contains(text[text.length - 1])) {
-      final taggedWords = _showTagSuggestions(text[text.length - 1]);
+    // Check if we're currently typing a tag
+    if (text.isNotEmpty) {
+      // Find the last tag character in the text
+      int lastTagIndex = -1;
+      String? tagChar;
 
-      setState(() {
-        _suggestions = taggedWords.take(5).toList();
-        _showSuggestions = taggedWords.isNotEmpty;
-        _displayEntries = List.from(_entries);
-        _hasSearchText = true;
-      });
-      return;
+      for (int i = text.length - 1; i >= 0; i--) {
+        if (tagLeaders.contains(text[i])) {
+          // Check if this tag is at the start or preceded by whitespace
+          if (i == 0 || text[i - 1] == ' ') {
+            lastTagIndex = i;
+            tagChar = text[i];
+            break;
+          }
+        } else if (text[i] == ' ') {
+          // Stop searching if we hit a space without finding a tag
+          break;
+        }
+      }
+
+      // If we found a tag character, show filtered suggestions
+      if (lastTagIndex != -1 && tagChar != null) {
+        final partialTag = text.substring(lastTagIndex);
+        final taggedWords = _showTagSuggestions(tagChar, partialTag);
+
+        setState(() {
+          _suggestions = taggedWords;
+          _showSuggestions = taggedWords.isNotEmpty;
+          _displayEntries = List.from(_entries);
+          _hasSearchText = true;
+        });
+        return;
+      }
     }
 
     // Regular filtering logic...
@@ -520,9 +542,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     });
   }
 
-  List<String> _showTagSuggestions(String tagChar) {
+  List<String> _showTagSuggestions(String tagChar, [String partialTag = '']) {
     // Extract just the tagged words (the part with the tag)
-    return _entries
+    final allTags = _entries
         .where((entry) => entry.word.contains(tagChar))
         .map((entry) {
           // Extract the tagged word from the entry
@@ -535,6 +557,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         .where((word) => word.isNotEmpty)
         .toSet() // Remove duplicates
         .toList();
+
+    // If partialTag is provided, filter to only matching tags
+    if (partialTag.isNotEmpty) {
+      return allTags
+          .where((tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()))
+          .toList();
+    }
+
+    return allTags;
   }
 
   Future<void> _resetEntries() async {
@@ -969,19 +1000,44 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
   void _checkForTags() {
     final text = _wordController.text;
 
-    if (text.isNotEmpty && tagLeaders.contains(text[text.length - 1])) {
-      final suggestions = widget.parentState._showTagSuggestions(
-        text[text.length - 1],
-      );
-      setState(() {
-        _suggestions = suggestions.take(5).toList();
-        _showSuggestions = suggestions.isNotEmpty;
-      });
-    } else {
-      setState(() {
-        _showSuggestions = false;
-      });
+    // Check if we're currently typing a tag
+    if (text.isNotEmpty) {
+      // Find the last tag character in the text
+      int lastTagIndex = -1;
+      String? tagChar;
+
+      for (int i = text.length - 1; i >= 0; i--) {
+        if (tagLeaders.contains(text[i])) {
+          // Check if this tag is at the start or preceded by whitespace
+          if (i == 0 || text[i - 1] == ' ') {
+            lastTagIndex = i;
+            tagChar = text[i];
+            break;
+          }
+        } else if (text[i] == ' ') {
+          // Stop searching if we hit a space without finding a tag
+          break;
+        }
+      }
+
+      // If we found a tag character, show filtered suggestions
+      if (lastTagIndex != -1 && tagChar != null) {
+        final partialTag = text.substring(lastTagIndex);
+        final suggestions = widget.parentState._showTagSuggestions(
+          tagChar,
+          partialTag,
+        );
+        setState(() {
+          _suggestions = suggestions;
+          _showSuggestions = suggestions.isNotEmpty;
+        });
+        return;
+      }
     }
+
+    setState(() {
+      _showSuggestions = false;
+    });
   }
 
   @override
