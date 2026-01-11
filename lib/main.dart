@@ -66,7 +66,7 @@ class WordLoggerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Bunyan Life Logging',
+      title: 'Bunyan 🪓',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -334,8 +334,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     try {
       // Get selected entries
-      final selectedEntries =
-          _selectedIndices.map((index) => _entries[index]).toList();
+      final selectedEntries = _selectedIndices
+          .map((index) => _entries[index])
+          .toList();
 
       final now = DateTime.now();
 
@@ -608,7 +609,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     // If partialTag is provided, filter to only matching tags
     if (partialTag.isNotEmpty) {
       return allTags
-          .where((tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()))
+          .where(
+            (tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()),
+          )
           .toList();
     }
 
@@ -644,7 +647,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       if (await file.exists()) {
         final contents = await file.readAsString();
-        final tags = contents.split('\n').where((line) => line.isNotEmpty).toList();
+        final tags = contents
+            .split('\n')
+            .where((line) => line.isNotEmpty)
+            .toList();
         setState(() {
           _hotbarTags = tags.take(5).toList();
         });
@@ -884,9 +890,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _bulkEditMode
-              ? '${_selectedIndices.length} selected'
-              : 'Bunyan Life Logging',
+          _bulkEditMode ? '${_selectedIndices.length} selected' : 'Bunyan 🪓',
         ),
         leading: _bulkEditMode
             ? IconButton(icon: Icon(Icons.close), onPressed: _exitBulkEditMode)
@@ -1133,8 +1137,8 @@ class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
             child: Text(
               '${_selectedTags.length}/5 tags selected',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: _selectedTags.length > 5 ? Colors.red : null,
-                  ),
+                color: _selectedTags.length > 5 ? Colors.red : null,
+              ),
             ),
           ),
           Divider(),
@@ -1156,7 +1160,9 @@ class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
 
                       return CheckboxListTile(
                         title: Text(tag),
-                        subtitle: Text('Used $count time${count != 1 ? 's' : ''}'),
+                        subtitle: Text(
+                          'Used $count time${count != 1 ? 's' : ''}',
+                        ),
                         value: isSelected,
                         onChanged: (bool? value) {
                           setState(() {
