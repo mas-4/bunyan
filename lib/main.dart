@@ -119,6 +119,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   bool _showAllMatches = false; // Toggle for showing all vs unique entries
   bool _hasSearchText = false; // Track if search field has text
 
+  // Hotbar tags
+  List<String> _hotbarTags = [];
+
   // Bulk edit variables
   bool _bulkEditMode = false;
   Set<int> _selectedIndices = {};
@@ -127,6 +130,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   void initState() {
     super.initState();
     _loadEntries();
+    _loadHotbarTags();
     _controller.addListener(_filterEntries);
   }
 
@@ -567,6 +571,59 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return allTags;
   }
 
+  Map<String, int> _getTagFrequencies() {
+    final tagCounts = <String, int>{};
+
+    for (final entry in _entries) {
+      final words = entry.word.split(' ');
+      for (final word in words) {
+        if (word.isNotEmpty && tagLeaders.contains(word[0])) {
+          tagCounts[word] = (tagCounts[word] ?? 0) + 1;
+        }
+      }
+    }
+
+    return tagCounts;
+  }
+
+  List<MapEntry<String, int>> _getTagsSortedByFrequency() {
+    final frequencies = _getTagFrequencies();
+    final sortedEntries = frequencies.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sortedEntries;
+  }
+
+  Future<void> _loadHotbarTags() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/bunyan_hotbar.txt');
+
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        final tags = contents.split('\n').where((line) => line.isNotEmpty).toList();
+        setState(() {
+          _hotbarTags = tags.take(5).toList();
+        });
+      }
+    } catch (e) {
+      // Silently fail - hotbar is optional
+    }
+  }
+
+  Future<void> _saveHotbarTags(List<String> tags) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/bunyan_hotbar.txt');
+      await file.writeAsString(tags.join('\n'));
+
+      setState(() {
+        _hotbarTags = tags;
+      });
+    } catch (e) {
+      _showError('Error saving hotbar settings: $e');
+    }
+  }
+
   Future<void> _resetEntries() async {
     final c = Text(
       "Are you sure you want to delete all entries? This cannot be undone.",
@@ -745,6 +802,31 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _openHotbarSettings() async {
+    final tagsByFrequency = _getTagsSortedByFrequency();
+    final result = await Navigator.push<List<String>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HotbarSettingsScreen(
+          currentHotbarTags: _hotbarTags,
+          tagsByFrequency: tagsByFrequency,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      await _saveHotbarTags(result);
+    }
+  }
+
+  void _insertTag(String tag) {
+    final currentText = _controller.text;
+    final newText = currentText.isEmpty ? '$tag ' : '$currentText $tag ';
+    _controller.text = newText;
+    _controller.selection = TextSelection.collapsed(offset: newText.length);
+    _focusNode.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -782,6 +864,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               ]
             : [
                 IconButton(
+                  icon: Icon(Icons.settings),
+                  onPressed: _openHotbarSettings,
+                  tooltip: 'Hotbar Settings',
+                ),
+                IconButton(
                   icon: Icon(Icons.delete_forever),
                   onPressed: _resetEntries,
                   tooltip: 'Reset Data',
@@ -805,6 +892,29 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             padding: EdgeInsets.all(16.0),
             child: Column(
               children: [
+                // Hotbar
+                if (_hotbarTags.isNotEmpty)
+                  Container(
+                    margin: EdgeInsets.only(bottom: 8),
+                    height: 40,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _hotbarTags.length,
+                      itemBuilder: (context, index) {
+                        final tag = _hotbarTags[index];
+                        return Padding(
+                          padding: EdgeInsets.only(right: 8),
+                          child: OutlinedButton(
+                            onPressed: () => _insertTag(tag),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            child: Text(tag),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 TextField(
                   controller: _controller,
                   focusNode: _focusNode,
@@ -913,6 +1023,103 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     itemBuilder: (context, index) {
                       final entry = _displayEntries[index];
                       return _buildEntry(entry, index);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HotbarSettingsScreen extends StatefulWidget {
+  final List<String> currentHotbarTags;
+  final List<MapEntry<String, int>> tagsByFrequency;
+
+  const HotbarSettingsScreen({
+    super.key,
+    required this.currentHotbarTags,
+    required this.tagsByFrequency,
+  });
+
+  @override
+  State<HotbarSettingsScreen> createState() => _HotbarSettingsScreenState();
+}
+
+class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
+  late List<String> _selectedTags;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTags = List.from(widget.currentHotbarTags);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Hotbar Settings'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, _selectedTags.take(5).toList());
+            },
+            child: Text('Save', style: TextStyle(color: Colors.blue)),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'Select up to 5 tags for your hotbar. Tags are sorted by frequency.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              '${_selectedTags.length}/5 tags selected',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: _selectedTags.length > 5 ? Colors.red : null,
+                  ),
+            ),
+          ),
+          Divider(),
+          Expanded(
+            child: widget.tagsByFrequency.isEmpty
+                ? Center(
+                    child: Text(
+                      'No tags found.\nAdd entries with tags like #tag, @mention, etc.',
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: widget.tagsByFrequency.length,
+                    itemBuilder: (context, index) {
+                      final entry = widget.tagsByFrequency[index];
+                      final tag = entry.key;
+                      final count = entry.value;
+                      final isSelected = _selectedTags.contains(tag);
+
+                      return CheckboxListTile(
+                        title: Text(tag),
+                        subtitle: Text('Used $count time${count != 1 ? 's' : ''}'),
+                        value: isSelected,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              if (_selectedTags.length < 5) {
+                                _selectedTags.add(tag);
+                              }
+                            } else {
+                              _selectedTags.remove(tag);
+                            }
+                          });
+                        },
+                      );
                     },
                   ),
           ),
