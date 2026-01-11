@@ -508,8 +508,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
 
     final matchingEntries = _entries.where((entry) {
-      final searchText = entry.word.split(':')[0].toLowerCase();
-      return searchText.contains(text.toLowerCase());
+      return entry.word.toLowerCase().contains(text.toLowerCase());
     }).toList();
 
     // If showing all matches, just use all matching entries
