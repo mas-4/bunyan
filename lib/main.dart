@@ -329,6 +329,50 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _bulkDuplicateEntries() async {
+    if (_selectedIndices.isEmpty) return;
+
+    try {
+      // Get selected entries
+      final selectedEntries =
+          _selectedIndices.map((index) => _entries[index]).toList();
+
+      final now = DateTime.now();
+
+      // Create duplicates with current timestamp
+      final duplicates = selectedEntries
+          .map((entry) => WordEntry(word: entry.word, timestamp: now))
+          .toList();
+
+      // Add duplicates to entries list
+      _entries.addAll(duplicates);
+
+      // Resort by timestamp (newest first)
+      _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      setState(() {
+        _displayEntries = List.from(_entries);
+      });
+
+      // Rewrite CSV file
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError("${_selectedIndices.length} entries duplicated");
+      _exitBulkEditMode();
+    } catch (e) {
+      _showError('Error duplicating entries: $e');
+    }
+  }
+
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
 
@@ -849,6 +893,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             : null,
         actions: _bulkEditMode
             ? [
+                if (_selectedIndices.isNotEmpty)
+                  IconButton(
+                    icon: Icon(Icons.copy),
+                    onPressed: _bulkDuplicateEntries,
+                    tooltip: 'Duplicate',
+                  ),
                 if (_selectedIndices.isNotEmpty)
                   IconButton(
                     icon: Icon(Icons.edit),
