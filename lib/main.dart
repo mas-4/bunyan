@@ -699,7 +699,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       },
     );
 
-    if (shouldReset == false) return;
+    if (shouldReset != true) return;
     try {
       final file = await getFile();
       if (await file.exists()) await file.delete();
