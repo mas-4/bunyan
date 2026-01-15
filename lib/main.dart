@@ -591,18 +591,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   List<String> _showTagSuggestions(String tagChar, [String partialTag = '']) {
-    // Extract just the tagged words (the part with the tag)
+    // Extract ALL tagged words (not just the first one)
     final allTags = _entries
         .where((entry) => entry.word.contains(tagChar))
-        .map((entry) {
-          // Extract the tagged word from the entry
+        .expand((entry) {
+          // Extract ALL tagged words from the entry
           final words = entry.word.split(' ');
-          return words.firstWhere(
-            (word) => word.startsWith(tagChar),
-            orElse: () => '',
-          );
+          return words.where((word) => word.startsWith(tagChar));
         })
-        .where((word) => word.isNotEmpty)
         .toSet() // Remove duplicates
         .toList();
 
