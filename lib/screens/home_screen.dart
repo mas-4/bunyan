@@ -8,6 +8,7 @@ import '../models.dart';
 import '../utils.dart';
 import 'edit_entry_screen.dart';
 import 'hotbar_settings_screen.dart';
+import 'backup_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -44,9 +45,26 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   @override
   void initState() {
     super.initState();
-    _loadEntries();
-    _loadHotbarTags();
+    _initializeApp();
     _controller.addListener(_filterEntries);
+  }
+
+  Future<void> _initializeApp() async {
+    // Check for daily backup first
+    await _checkDailyBackup();
+    // Then load data
+    await _loadEntries();
+    await _loadHotbarTags();
+  }
+
+  Future<void> _checkDailyBackup() async {
+    try {
+      if (await shouldBackupToday()) {
+        await createBackup();
+      }
+    } catch (e) {
+      // Silently fail - backup is best-effort
+    }
   }
 
   @override
@@ -727,6 +745,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _openBackupScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BackupScreen(
+          onRestore: () {
+            _loadEntries(); // Reload entries after restore
+          },
+        ),
+      ),
+    );
+  }
+
   void _insertTag(String tag) {
     final currentText = _controller.text;
     final newText = currentText.isEmpty ? '$tag ' : '$currentText $tag ';
@@ -774,6 +805,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   icon: Icon(Icons.settings),
                   onPressed: _openHotbarSettings,
                   tooltip: 'Hotbar Settings',
+                ),
+                IconButton(
+                  icon: Icon(Icons.backup),
+                  onPressed: _openBackupScreen,
+                  tooltip: 'Backups',
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_forever),
