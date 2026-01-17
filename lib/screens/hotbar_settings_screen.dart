@@ -23,6 +23,12 @@ class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
     _selectedTags = List.from(widget.currentHotbarTags);
   }
 
+  List<MapEntry<String, int>> get _availableTags {
+    return widget.tagsByFrequency
+        .where((entry) => !_selectedTags.contains(entry.key))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -31,64 +37,105 @@ class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context, _selectedTags.take(5).toList());
+              Navigator.pop(context, _selectedTags.toList());
             },
             child: Text('Save', style: TextStyle(color: Colors.blue)),
           ),
         ],
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Selected tags section - reorderable
           Padding(
             padding: EdgeInsets.all(16.0),
             child: Text(
-              'Select up to 5 tags for your hotbar. Tags are sorted by frequency.',
-              style: Theme.of(context).textTheme.bodyMedium,
+              'Your Hotbar (drag to reorder)',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
+          if (_selectedTags.isEmpty)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                'No tags selected. Add some from below.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey,
+                ),
+              ),
+            )
+          else
+            Container(
+              constraints: BoxConstraints(maxHeight: 250),
+              child: ReorderableListView.builder(
+                shrinkWrap: true,
+                itemCount: _selectedTags.length,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) newIndex--;
+                    final tag = _selectedTags.removeAt(oldIndex);
+                    _selectedTags.insert(newIndex, tag);
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final tag = _selectedTags[index];
+                  return ListTile(
+                    key: ValueKey(tag),
+                    leading: Icon(Icons.drag_handle),
+                    title: Text(tag),
+                    trailing: IconButton(
+                      icon: Icon(Icons.remove_circle_outline, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _selectedTags.remove(tag);
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          Divider(height: 32),
+
+          // Available tags section
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
-              '${_selectedTags.length}/5 tags selected',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: _selectedTags.length > 5 ? Colors.red : null,
-              ),
+              'Available Tags (by frequency)',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-          Divider(),
+          SizedBox(height: 8),
           Expanded(
-            child: widget.tagsByFrequency.isEmpty
+            child: _availableTags.isEmpty
                 ? Center(
                     child: Text(
-                      'No tags found.\nAdd entries with tags like #tag, @mention, etc.',
+                      widget.tagsByFrequency.isEmpty
+                          ? 'No tags found.\nAdd entries with tags like #tag, @mention, etc.'
+                          : 'All tags added to hotbar.',
                       textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
                     ),
                   )
                 : ListView.builder(
-                    itemCount: widget.tagsByFrequency.length,
+                    itemCount: _availableTags.length,
                     itemBuilder: (context, index) {
-                      final entry = widget.tagsByFrequency[index];
+                      final entry = _availableTags[index];
                       final tag = entry.key;
                       final count = entry.value;
-                      final isSelected = _selectedTags.contains(tag);
 
-                      return CheckboxListTile(
+                      return ListTile(
                         title: Text(tag),
-                        subtitle: Text(
-                          'Used $count time${count != 1 ? 's' : ''}',
+                        subtitle: Text('Used $count time${count != 1 ? 's' : ''}'),
+                        trailing: IconButton(
+                          icon: Icon(Icons.add_circle_outline, color: Colors.green),
+                          onPressed: () {
+                            setState(() {
+                              _selectedTags.add(tag);
+                            });
+                          },
                         ),
-                        value: isSelected,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            if (value == true) {
-                              if (_selectedTags.length < 5) {
-                                _selectedTags.add(tag);
-                              }
-                            } else {
-                              _selectedTags.remove(tag);
-                            }
-                          });
-                        },
                       );
                     },
                   ),

@@ -497,7 +497,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final contents = await file.readAsString();
         final tags = contents.split('\n').where((line) => line.isNotEmpty).toList();
         setState(() {
-          _hotbarTags = tags.take(5).toList();
+          _hotbarTags = tags;
         });
       }
     } catch (e) {
