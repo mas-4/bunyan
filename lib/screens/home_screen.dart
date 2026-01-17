@@ -107,14 +107,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       lastDate: now,
     );
 
-    if (date == null) return;
+    if (date == null || !mounted) return;
 
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(now),
     );
 
-    if (time == null) return;
+    if (time == null || !mounted) return;
 
     final newDateTime = DateTime(
       date.year,
