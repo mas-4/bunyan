@@ -32,6 +32,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   bool _bulkEditMode = false;
   final Set<int> _selectedIndices = {};
 
+  // Frequency map: word -> count
+  Map<String, int> get _wordFrequencies {
+    final counts = <String, int>{};
+    for (final entry in _entries) {
+      counts[entry.word] = (counts[entry.word] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -246,6 +255,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
+    final count = _wordFrequencies[entry.word] ?? 1;
 
     if (_bulkEditMode) {
       final actualIndex = _entries.indexOf(entry);
@@ -266,7 +276,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         ),
         title: Text(entry.word),
         subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
-        trailing: Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+            if (count > 1) Text('x$count', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+          ],
+        ),
         onTap: () {
           final actualIndex = _entries.indexOf(entry);
           setState(() {
@@ -332,7 +349,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       child: ListTile(
         title: Text(entry.word),
         subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
-        trailing: Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+            if (count > 1) Text('x$count', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+          ],
+        ),
         onTap: () => _editEntry(entry),
         onLongPress: () => _enterBulkEditMode(entry),
       ),
