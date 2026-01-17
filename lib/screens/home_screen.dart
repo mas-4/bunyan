@@ -390,10 +390,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final partialTag = trimmedText.substring(lastTagIndex);
         final taggedWords = getTagSuggestions(tagChar, partialTag);
 
+        // Filter entries by the full search text, not just the tag
+        final matchingEntries = _entries.where((entry) {
+          return entry.word.toLowerCase().contains(trimmedText.toLowerCase());
+        }).toList();
+
         setState(() {
           _suggestions = taggedWords;
           _showSuggestions = taggedWords.isNotEmpty;
-          _displayEntries = List.from(_entries);
+          _displayEntries = matchingEntries;
           _hasSearchText = true;
         });
         return;
