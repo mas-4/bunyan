@@ -512,19 +512,22 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     // Check if we're currently typing a tag
     if (text.isNotEmpty) {
+      // Trim trailing whitespace when looking for tags to allow editing
+      final trimmedText = text.trimRight();
+
       // Find the last tag character in the text
       int lastTagIndex = -1;
       String? tagChar;
 
-      for (int i = text.length - 1; i >= 0; i--) {
-        if (tagLeaders.contains(text[i])) {
+      for (int i = trimmedText.length - 1; i >= 0; i--) {
+        if (tagLeaders.contains(trimmedText[i])) {
           // Check if this tag is at the start or preceded by whitespace
-          if (i == 0 || text[i - 1] == ' ') {
+          if (i == 0 || trimmedText[i - 1] == ' ') {
             lastTagIndex = i;
-            tagChar = text[i];
+            tagChar = trimmedText[i];
             break;
           }
-        } else if (text[i] == ' ') {
+        } else if (trimmedText[i] == ' ') {
           // Stop searching if we hit a space without finding a tag
           break;
         }
@@ -532,7 +535,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       // If we found a tag character, show filtered suggestions
       if (lastTagIndex != -1 && tagChar != null) {
-        final partialTag = text.substring(lastTagIndex);
+        final partialTag = trimmedText.substring(lastTagIndex);
         final taggedWords = _showTagSuggestions(tagChar, partialTag);
 
         setState(() {
@@ -802,7 +805,17 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             .toList();
       });
 
-      // Rest of your delete logic...
+      // Rewrite CSV file
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
     } catch (e) {
       _showError('Error deleting entry: $e');
     }
@@ -1013,15 +1026,21 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                           dense: true,
                           title: Text(suggestion),
                           onTap: () {
-                            // Remove the tag character that triggered the suggestions
+                            // Find the start of the partial tag
                             final currentText = _controller.text;
-                            final textWithoutTag = currentText.substring(
-                              0,
-                              currentText.length - 1,
-                            );
+                            int tagStartIndex = currentText.length;
+                            for (int i = currentText.length - 1; i >= 0; i--) {
+                              if (tagLeaders.contains(currentText[i])) {
+                                if (i == 0 || currentText[i - 1] == ' ') {
+                                  tagStartIndex = i;
+                                  break;
+                                }
+                              }
+                            }
 
-                            // Append the selected tag
-                            _controller.text = '$textWithoutTag$suggestion ';
+                            // Remove the partial tag and append the full suggestion
+                            final textBeforeTag = currentText.substring(0, tagStartIndex);
+                            _controller.text = '$textBeforeTag$suggestion ';
 
                             _controller.selection = TextSelection.collapsed(
                               offset: _controller.text.length,
@@ -1260,19 +1279,22 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
     // Check if we're currently typing a tag
     if (text.isNotEmpty) {
+      // Trim trailing whitespace when looking for tags to allow editing
+      final trimmedText = text.trimRight();
+
       // Find the last tag character in the text
       int lastTagIndex = -1;
       String? tagChar;
 
-      for (int i = text.length - 1; i >= 0; i--) {
-        if (tagLeaders.contains(text[i])) {
+      for (int i = trimmedText.length - 1; i >= 0; i--) {
+        if (tagLeaders.contains(trimmedText[i])) {
           // Check if this tag is at the start or preceded by whitespace
-          if (i == 0 || text[i - 1] == ' ') {
+          if (i == 0 || trimmedText[i - 1] == ' ') {
             lastTagIndex = i;
-            tagChar = text[i];
+            tagChar = trimmedText[i];
             break;
           }
-        } else if (text[i] == ' ') {
+        } else if (trimmedText[i] == ' ') {
           // Stop searching if we hit a space without finding a tag
           break;
         }
@@ -1280,7 +1302,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
       // If we found a tag character, show filtered suggestions
       if (lastTagIndex != -1 && tagChar != null) {
-        final partialTag = text.substring(lastTagIndex);
+        final partialTag = trimmedText.substring(lastTagIndex);
         final suggestions = widget.parentState._showTagSuggestions(
           tagChar,
           partialTag,
@@ -1349,15 +1371,21 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                       dense: true,
                       title: Text(suggestion),
                       onTap: () {
-                        // Remove the tag character that triggered the suggestions
+                        // Find the start of the partial tag
                         final currentText = _wordController.text;
-                        final textWithoutTag = currentText.substring(
-                          0,
-                          currentText.length - 1,
-                        );
+                        int tagStartIndex = currentText.length;
+                        for (int i = currentText.length - 1; i >= 0; i--) {
+                          if (tagLeaders.contains(currentText[i])) {
+                            if (i == 0 || currentText[i - 1] == ' ') {
+                              tagStartIndex = i;
+                              break;
+                            }
+                          }
+                        }
 
-                        // Append the selected tag
-                        _wordController.text = '$textWithoutTag$suggestion ';
+                        // Remove the partial tag and append the full suggestion
+                        final textBeforeTag = currentText.substring(0, tagStartIndex);
+                        _wordController.text = '$textBeforeTag$suggestion ';
 
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           _wordController.selection = TextSelection.collapsed(
