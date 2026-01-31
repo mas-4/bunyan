@@ -94,38 +94,33 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
     if (matchingEntries.isEmpty) return [];
 
-    // Track which entries have been counted (by timestamp) to avoid double-counting
-    final countedEntries = <int>{};
     final relatedWords = <String, int>{};
 
     for (final matchingEntry in matchingEntries) {
       final matchTime = matchingEntry.timestamp;
+      // Track entries counted for this specific matching entry to avoid
+      // counting the same entry multiple times for the same match
+      final countedForThisMatch = <int>{};
 
       for (final entry in widget.allEntries) {
         // Skip if same word
         if (entry.word.trim() == entryWord) continue;
 
-        // Skip if already counted this specific entry
+        // Skip if already counted for this matching entry
         final entryId = entry.timestamp.millisecondsSinceEpoch;
-        if (countedEntries.contains(entryId)) continue;
+        if (countedForThisMatch.contains(entryId)) continue;
 
-        // Check if within time window (same time of day, any date)
-        final entryMinutes = entry.timestamp.hour * 60 + entry.timestamp.minute;
-        final matchMinutes = matchTime.hour * 60 + matchTime.minute;
+        // Check if within time window (actual timestamp proximity)
+        final timeDiff = entry.timestamp.difference(matchTime).inMinutes.abs();
 
-        var diff = (entryMinutes - matchMinutes).abs();
-        if (diff > 12 * 60) {
-          diff = 24 * 60 - diff;
-        }
-
-        if (diff <= windowMinutes) {
-          countedEntries.add(entryId);
+        if (timeDiff <= windowMinutes) {
+          countedForThisMatch.add(entryId);
           relatedWords[entry.word] = (relatedWords[entry.word] ?? 0) + 1;
         }
       }
     }
 
-    // Sort by frequency
+    // Sort by co-occurrence frequency
     final sorted = relatedWords.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 

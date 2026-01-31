@@ -22,7 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _aroundNowWindow;
   late int _relatedEntriesWindow;
 
-  final List<int> _timeOptions = [15, 30, 45, 60, 90, 120, 180, 240];
+  final List<int> _timeOptions = [5, 15, 30, 45, 60, 90, 120, 180, 240];
 
   @override
   void initState() {
