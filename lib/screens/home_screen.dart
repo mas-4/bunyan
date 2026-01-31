@@ -90,7 +90,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   void _showError(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -153,7 +155,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -208,10 +212,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     if (name == null || name.isEmpty) return;
 
     try {
-      final selectedEntries = _selectedIndices.map((index) => _entries[index]).toList()
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final selectedEntries =
+          _selectedIndices.map((index) => _entries[index]).toList()
+            ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-      final entryWords = selectedEntries.map((entry) => entry.word.replaceAll(':', ',')).join(', ');
+      final entryWords = selectedEntries
+          .map((entry) => entry.word.replaceAll(':', ','))
+          .join(', ');
       final combinedText = '$name: $entryWords';
 
       final latestTimestamp = selectedEntries
@@ -223,7 +230,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         timestamp: latestTimestamp,
       );
 
-      final indicesToRemove = _selectedIndices.toList()..sort((a, b) => b.compareTo(a));
+      final indicesToRemove = _selectedIndices.toList()
+        ..sort((a, b) => b.compareTo(a));
       for (int index in indicesToRemove) {
         _entries.removeAt(index);
       }
@@ -236,7 +244,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -255,7 +265,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     if (_selectedIndices.isEmpty) return;
 
     try {
-      final selectedEntries = _selectedIndices.map((index) => _entries[index]).toList();
+      final selectedEntries = _selectedIndices
+          .map((index) => _entries[index])
+          .toList();
       final now = DateTime.now();
 
       final duplicates = selectedEntries
@@ -270,7 +282,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -313,7 +327,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
-            if (count > 1) Text('x$count', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+            if (count > 1)
+              Text(
+                'x$count',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
           ],
         ),
         onTap: () {
@@ -386,10 +406,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
-            if (count > 1) Text('x$count', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+            if (count > 1)
+              Text(
+                'x$count',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
           ],
         ),
-        onTap: () => (_hasSearchText && !_showAllMatches) ? _bulkEditText(entry.word) : _editEntry(entry),
+        onTap: () => (_hasSearchText && !_showAllMatches)
+            ? _bulkEditText(entry.word)
+            : _editEntry(entry),
         onLongPress: () => _enterBulkEditMode(entry),
       ),
     );
@@ -401,7 +429,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       if (await file.exists()) {
         final contents = await file.readAsString();
         final lines = contents.split('\n').where((line) => line.isNotEmpty);
-        final entries = lines.map((line) => WordEntry.fromCsv(line)).toList().reversed.toList();
+        final entries = lines
+            .map((line) => WordEntry.fromCsv(line))
+            .toList()
+            .reversed
+            .toList();
 
         setState(() {
           _entries = entries;
@@ -515,7 +547,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     if (partialTag.isNotEmpty) {
       return allTags
-          .where((tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()))
+          .where(
+            (tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()),
+          )
           .toList();
     }
 
@@ -551,7 +585,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       if (await file.exists()) {
         final contents = await file.readAsString();
-        final tags = contents.split('\n').where((line) => line.isNotEmpty).toList();
+        final tags = contents
+            .split('\n')
+            .where((line) => line.isNotEmpty)
+            .toList();
         setState(() {
           _hotbarTags = tags;
         });
@@ -581,7 +618,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Reset All Data'),
-          content: Text("Are you sure you want to delete all entries? This cannot be undone."),
+          content: Text(
+            "Are you sure you want to delete all entries? This cannot be undone.",
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -647,7 +686,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -664,7 +705,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   Future<void> _bulkEditText(String oldWord) async {
     final oldWordTrimmed = oldWord.trim();
     final controller = TextEditingController(text: oldWordTrimmed);
-    final matchingCount = _entries.where((e) => e.word.trim() == oldWordTrimmed).length;
+    final matchingCount = _entries
+        .where((e) => e.word.trim() == oldWordTrimmed)
+        .length;
 
     final newWord = await showDialog<String>(
       context: context,
@@ -706,7 +749,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       int updatedCount = 0;
       for (int i = 0; i < _entries.length; i++) {
         if (_entries[i].word.trim() == oldWordTrimmed) {
-          _entries[i] = WordEntry(word: newWord, timestamp: _entries[i].timestamp);
+          _entries[i] = WordEntry(
+            word: newWord,
+            timestamp: _entries[i].timestamp,
+          );
           updatedCount++;
         }
       }
@@ -716,7 +762,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -774,7 +822,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   Future<void> _deleteEntry(WordEntry entryToDelete) async {
     try {
       final actualIndex = _entries.indexWhere(
-        (e) => e.timestamp == entryToDelete.timestamp && e.word == entryToDelete.word,
+        (e) =>
+            e.timestamp == entryToDelete.timestamp &&
+            e.word == entryToDelete.word,
       );
 
       if (actualIndex == -1) return;
@@ -782,12 +832,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       setState(() {
         _entries.removeAt(actualIndex);
         _displayEntries = _displayEntries
-            .where((e) => e.timestamp != entryToDelete.timestamp || e.word != entryToDelete.word)
+            .where(
+              (e) =>
+                  e.timestamp != entryToDelete.timestamp ||
+                  e.word != entryToDelete.word,
+            )
             .toList();
       });
 
       final file = await getFile();
-      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
 
       if (csvContent.isNotEmpty) {
         await file.writeAsString('$csvContent\n');
@@ -814,7 +870,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   Future<void> _importData() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+      );
 
       if (result == null || result.files.single.path == null) return;
 
@@ -911,11 +969,16 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     if (_isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final uniqueWords = _entries.map((e) => e.word.toLowerCase()).toSet().length;
+    final uniqueWords = _entries
+        .map((e) => e.word.toLowerCase())
+        .toSet()
+        .length;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_bulkEditMode ? '${_selectedIndices.length} selected' : 'Bunyan'),
+        title: Text(
+          _bulkEditMode ? '${_selectedIndices.length} selected' : 'Bunyan 🪓',
+        ),
         leading: _bulkEditMode
             ? IconButton(icon: Icon(Icons.close), onPressed: _exitBulkEditMode)
             : null,
@@ -953,24 +1016,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-              ),
+              decoration: BoxDecoration(color: Theme.of(context).primaryColor),
               child: Text(
-                'Bunyan',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                ),
+                'Bunyan 🪓',
+                style: TextStyle(color: Colors.white, fontSize: 24),
               ),
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Hotbar Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _openHotbarSettings();
-              },
             ),
             ListTile(
               leading: Icon(Icons.backup),
@@ -978,6 +1028,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               onTap: () {
                 Navigator.pop(context);
                 _openBackupScreen();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings),
+              title: Text('Hotbar Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _openHotbarSettings();
               },
             ),
             ListTile(
@@ -1066,7 +1124,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   Container(
                     margin: EdgeInsets.only(top: 8),
                     child: OutlinedButton.icon(
-                      icon: Icon(_showAllMatches ? Icons.filter_1 : Icons.filter_list),
+                      icon: Icon(
+                        _showAllMatches ? Icons.filter_1 : Icons.filter_list,
+                      ),
                       label: Text(_showAllMatches ? 'Show Unique' : 'Show All'),
                       onPressed: () {
                         setState(() {
@@ -1100,7 +1160,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                               }
                             }
 
-                            final textBeforeTag = currentText.substring(0, tagStartIndex);
+                            final textBeforeTag = currentText.substring(
+                              0,
+                              tagStartIndex,
+                            );
                             _controller.text = '$textBeforeTag$suggestion ';
 
                             _controller.selection = TextSelection.collapsed(
@@ -1123,8 +1186,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Total entries: ${_entries.length}', style: Theme.of(context).textTheme.bodyMedium),
-                Text('Unique entries: $uniqueWords', style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  'Total entries: ${_entries.length}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Text(
+                  'Unique entries: $uniqueWords',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ],
             ),
           ),
