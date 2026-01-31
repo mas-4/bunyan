@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -81,6 +82,107 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
         time.minute,
       );
     });
+  }
+
+  List<WordEntry> _getMatchingEntries() {
+    final entryWord = widget.entry.word.trim();
+    return widget.allEntries.where((e) => e.word.trim() == entryWord).toList();
+  }
+
+  List<int> _getWeekdayFrequency(List<WordEntry> entries) {
+    final counts = List.filled(7, 0);
+    for (final entry in entries) {
+      // DateTime.weekday: 1 = Monday, 7 = Sunday
+      counts[entry.timestamp.weekday - 1]++;
+    }
+    return counts;
+  }
+
+  List<int> _getTimePeriodFrequency(List<WordEntry> entries) {
+    // Morning (5-11), Midday (11-14), Afternoon (14-17), Evening (17-21), Night (21-5)
+    final counts = List.filled(5, 0);
+    for (final entry in entries) {
+      final hour = entry.timestamp.hour;
+      if (hour >= 5 && hour < 11) {
+        counts[0]++; // Morning
+      } else if (hour >= 11 && hour < 14) {
+        counts[1]++; // Midday
+      } else if (hour >= 14 && hour < 17) {
+        counts[2]++; // Afternoon
+      } else if (hour >= 17 && hour < 21) {
+        counts[3]++; // Evening
+      } else {
+        counts[4]++; // Night (21-5)
+      }
+    }
+    return counts;
+  }
+
+  Widget _buildBarChart({
+    required List<int> data,
+    required List<String> labels,
+    required Color barColor,
+  }) {
+    final maxY = data.reduce((a, b) => a > b ? a : b).toDouble();
+
+    return SizedBox(
+      height: 120,
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxY > 0 ? maxY * 1.2 : 1,
+          minY: 0,
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  '${labels[group.x]}: ${rod.toY.toInt()}',
+                  TextStyle(color: Colors.white, fontSize: 12),
+                );
+              },
+            ),
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final index = value.toInt();
+                  if (index < 0 || index >= labels.length) return SizedBox();
+                  return Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      labels[index],
+                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                    ),
+                  );
+                },
+                reservedSize: 24,
+              ),
+            ),
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: false),
+          gridData: FlGridData(show: false),
+          barGroups: List.generate(data.length, (index) {
+            return BarChartGroupData(
+              x: index,
+              barRods: [
+                BarChartRodData(
+                  toY: data[index].toDouble(),
+                  color: barColor,
+                  width: labels.length > 5 ? 20 : 28,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+              ],
+            );
+          }),
+        ),
+      ),
+    );
   }
 
   List<MapEntry<String, int>> _getRelatedEntries() {
@@ -269,6 +371,65 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                 ),
               ],
             ),
+          ),
+          Builder(
+            builder: (context) {
+              final matchingEntries = _getMatchingEntries();
+              if (matchingEntries.length <= 5) return SizedBox();
+
+              final weekdayData = _getWeekdayFrequency(matchingEntries);
+              final timePeriodData = _getTimePeriodFrequency(matchingEntries);
+              final weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              final timePeriodLabels = ['Morn', 'Mid', 'Aftn', 'Eve', 'Night'];
+
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Frequency (${matchingEntries.length} entries)',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('By weekday', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              SizedBox(height: 4),
+                              _buildBarChart(
+                                data: weekdayData,
+                                labels: weekdayLabels,
+                                barColor: Colors.blue,
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('By time of day', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              SizedBox(height: 4),
+                              _buildBarChart(
+                                data: timePeriodData,
+                                labels: timePeriodLabels,
+                                barColor: Colors.orange,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                  ],
+                ),
+              );
+            },
           ),
           Divider(),
           Padding(
