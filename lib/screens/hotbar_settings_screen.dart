@@ -16,11 +16,28 @@ class HotbarSettingsScreen extends StatefulWidget {
 
 class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
   late List<String> _selectedTags;
+  final TextEditingController _customTagController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _selectedTags = List.from(widget.currentHotbarTags);
+  }
+
+  @override
+  void dispose() {
+    _customTagController.dispose();
+    super.dispose();
+  }
+
+  void _addCustomTag() {
+    final tag = _customTagController.text.trim();
+    if (tag.isNotEmpty && !_selectedTags.contains(tag)) {
+      setState(() {
+        _selectedTags.add(tag);
+        _customTagController.clear();
+      });
+    }
   }
 
   List<MapEntry<String, int>> get _availableTags {
@@ -95,6 +112,31 @@ class _HotbarSettingsScreenState extends State<HotbarSettingsScreen> {
                 },
               ),
             ),
+
+          // Custom tag input
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customTagController,
+                    decoration: InputDecoration(
+                      hintText: 'Add custom entry...',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    onSubmitted: (_) => _addCustomTag(),
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.add_circle, color: Colors.green),
+                  onPressed: _addCustomTag,
+                ),
+              ],
+            ),
+          ),
 
           Divider(height: 32),
 
