@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../utils.dart';
-
 class SettingsScreen extends StatefulWidget {
   final int aroundNowWindow;
   final int relatedEntriesWindow;
