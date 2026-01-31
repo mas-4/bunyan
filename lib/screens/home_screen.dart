@@ -376,7 +376,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             if (count > 1) Text('x$count', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
           ],
         ),
-        onTap: () => _editEntry(entry),
+        onTap: () => (_hasSearchText && !_showAllMatches) ? _bulkEditText(entry.word) : _editEntry(entry),
         onLongPress: () => _enterBulkEditMode(entry),
       ),
     );
@@ -640,6 +640,76 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _showError("Entry updated");
     } catch (e) {
       _showError('Error updating entry: $e');
+    }
+  }
+
+  Future<void> _bulkEditText(String oldWord) async {
+    final oldWordTrimmed = oldWord.trim();
+    final controller = TextEditingController(text: oldWordTrimmed);
+    final matchingCount = _entries.where((e) => e.word.trim() == oldWordTrimmed).length;
+
+    final newWord = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit All Matching Entries'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$matchingCount entries will be updated'),
+            SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'New text',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+              onSubmitted: (value) => Navigator.pop(context, value.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text('Update All'),
+          ),
+        ],
+      ),
+    );
+
+    if (newWord == null || newWord.isEmpty || newWord == oldWordTrimmed) return;
+
+    try {
+      int updatedCount = 0;
+      for (int i = 0; i < _entries.length; i++) {
+        if (_entries[i].word.trim() == oldWordTrimmed) {
+          _entries[i] = WordEntry(word: newWord, timestamp: _entries[i].timestamp);
+          updatedCount++;
+        }
+      }
+
+      setState(() {
+        _displayEntries = List.from(_entries);
+      });
+
+      final file = await getFile();
+      final csvContent = _entries.reversed.map((entry) => entry.toCsv()).join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError('$updatedCount entries updated');
+      _controller.clear();
+    } catch (e) {
+      _showError('Error updating entries: $e');
     }
   }
 
