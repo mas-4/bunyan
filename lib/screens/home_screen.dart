@@ -9,6 +9,7 @@ import '../utils.dart';
 import 'edit_entry_screen.dart';
 import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
+import 'time_suggestions_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -758,6 +759,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
+  void _openTimeSuggestions() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TimeSuggestionsScreen(
+          entries: _entries,
+          onAddEntry: _addEntry,
+        ),
+      ),
+    );
+  }
+
   void _insertTag(String tag) {
     final currentText = _controller.text;
     final newText = currentText.isEmpty ? '$tag ' : '$currentText $tag ';
@@ -801,6 +814,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   ),
               ]
             : [
+                IconButton(
+                  icon: Icon(Icons.access_time),
+                  onPressed: _openTimeSuggestions,
+                  tooltip: 'Time Suggestions',
+                ),
                 IconButton(
                   icon: Icon(Icons.settings),
                   onPressed: _openHotbarSettings,
