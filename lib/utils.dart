@@ -4,6 +4,51 @@ import 'package:path_provider/path_provider.dart';
 const String tagLeaders = '!@#^&~+=\\|';
 const int maxBackups = 5;
 
+// Default time windows in minutes
+const int defaultAroundNowWindow = 60;
+const int defaultRelatedEntriesWindow = 30;
+
+Future<File> _getSettingsFile() async {
+  final directory = await getApplicationDocumentsDirectory();
+  return File('${directory.path}/bunyan_settings.txt');
+}
+
+Future<Map<String, int>> loadTimeSettings() async {
+  try {
+    final file = await _getSettingsFile();
+    if (await file.exists()) {
+      final contents = await file.readAsString();
+      final lines = contents.split('\n');
+      final settings = <String, int>{};
+      for (final line in lines) {
+        if (line.contains('=')) {
+          final parts = line.split('=');
+          settings[parts[0]] = int.tryParse(parts[1]) ?? 0;
+        }
+      }
+      return {
+        'aroundNow': settings['aroundNow'] ?? defaultAroundNowWindow,
+        'relatedEntries': settings['relatedEntries'] ?? defaultRelatedEntriesWindow,
+      };
+    }
+  } catch (e) {
+    // Silently fail
+  }
+  return {
+    'aroundNow': defaultAroundNowWindow,
+    'relatedEntries': defaultRelatedEntriesWindow,
+  };
+}
+
+Future<void> saveTimeSettings(int aroundNow, int relatedEntries) async {
+  try {
+    final file = await _getSettingsFile();
+    await file.writeAsString('aroundNow=$aroundNow\nrelatedEntries=$relatedEntries');
+  } catch (e) {
+    // Silently fail
+  }
+}
+
 Future<File> getFile() async {
   final directory = await getApplicationDocumentsDirectory();
   return File('${directory.path}/bunyan.csv');

@@ -5,19 +5,18 @@ import '../models.dart';
 class TimeSuggestionsScreen extends StatelessWidget {
   final List<WordEntry> entries;
   final Function(String) onAddEntry;
+  final int windowMinutes;
 
   const TimeSuggestionsScreen({
     super.key,
     required this.entries,
     required this.onAddEntry,
+    required this.windowMinutes,
   });
 
   List<MapEntry<String, int>> _getTimeFilteredSuggestions() {
     final now = DateTime.now();
     final currentMinutes = now.hour * 60 + now.minute;
-
-    // Filter entries within 1 hour window (60 minutes before and after)
-    final windowMinutes = 60;
 
     final filteredEntries = entries.where((entry) {
       final entryMinutes = entry.timestamp.hour * 60 + entry.timestamp.minute;
@@ -46,16 +45,17 @@ class TimeSuggestionsScreen extends StatelessWidget {
 
   String _formatTimeWindow() {
     final now = DateTime.now();
-    final startHour = (now.hour - 1 + 24) % 24;
-    final endHour = (now.hour + 1) % 24;
+    final startTime = now.subtract(Duration(minutes: windowMinutes));
+    final endTime = now.add(Duration(minutes: windowMinutes));
 
-    String formatHour(int hour) {
+    String formatTime(DateTime dt) {
+      final hour = dt.hour;
       final period = hour >= 12 ? 'PM' : 'AM';
       final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-      return '$displayHour $period';
+      return '$displayHour:${dt.minute.toString().padLeft(2, '0')} $period';
     }
 
-    return '${formatHour(startHour)} - ${formatHour(endHour)}';
+    return '${formatTime(startTime)} - ${formatTime(endTime)}';
   }
 
   @override

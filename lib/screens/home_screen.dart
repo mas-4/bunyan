@@ -10,6 +10,7 @@ import 'edit_entry_screen.dart';
 import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
 import 'time_suggestions_screen.dart';
+import 'settings_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -30,6 +31,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   bool _hasSearchText = false;
 
   List<String> _hotbarTags = [];
+
+  int _aroundNowWindow = defaultAroundNowWindow;
+  int _relatedEntriesWindow = defaultRelatedEntriesWindow;
 
   bool _bulkEditMode = false;
   final Set<int> _selectedIndices = {};
@@ -56,6 +60,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     // Then load data
     await _loadEntries();
     await _loadHotbarTags();
+    await _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final settings = await loadTimeSettings();
+    setState(() {
+      _aroundNowWindow = settings['aroundNow']!;
+      _relatedEntriesWindow = settings['relatedEntries']!;
+    });
   }
 
   Future<void> _checkDailyBackup() async {
@@ -605,9 +618,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       MaterialPageRoute(
         builder: (context) => EditEntryScreen(
           entry: entryToEdit,
+          allEntries: _entries,
+          relatedEntriesWindow: _relatedEntriesWindow,
           getTagSuggestions: getTagSuggestions,
           onSave: (editedEntry) async {
             await _updateEntry(entryToEdit, editedEntry);
+          },
+          onAddRelated: (word, timestamp) async {
+            await _addEntryWithTimestamp(word, timestamp);
           },
         ),
       ),
@@ -734,6 +752,25 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _addEntryWithTimestamp(String word, DateTime timestamp) async {
+    if (word.trim().isEmpty) return;
+
+    final entry = WordEntry(word: word.trim(), timestamp: timestamp);
+
+    try {
+      final file = await getFile();
+      await file.writeAsString('${entry.toCsv()}\n', mode: FileMode.append);
+
+      setState(() {
+        _entries.add(entry);
+        _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _displayEntries = List.from(_entries);
+      });
+    } catch (e) {
+      _showError("Error saving entry: $e");
+    }
+  }
+
   Future<void> _deleteEntry(WordEntry entryToDelete) async {
     try {
       final actualIndex = _entries.indexWhere(
@@ -836,6 +873,26 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         builder: (context) => TimeSuggestionsScreen(
           entries: _entries,
           onAddEntry: _addEntry,
+          windowMinutes: _aroundNowWindow,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(
+          aroundNowWindow: _aroundNowWindow,
+          relatedEntriesWindow: _relatedEntriesWindow,
+          onSave: (aroundNow, relatedEntries) async {
+            await saveTimeSettings(aroundNow, relatedEntries);
+            setState(() {
+              _aroundNowWindow = aroundNow;
+              _relatedEntriesWindow = relatedEntries;
+            });
+          },
         ),
       ),
     );
@@ -921,6 +978,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               onTap: () {
                 Navigator.pop(context);
                 _openBackupScreen();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.tune),
+              title: Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _openSettings();
               },
             ),
             Divider(),
