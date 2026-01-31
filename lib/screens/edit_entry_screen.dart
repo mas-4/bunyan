@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../utils.dart';
+import 'entry_stats_screen.dart';
 
 class EditEntryScreen extends StatefulWidget {
   final WordEntry entry;
@@ -273,6 +274,21 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
       appBar: AppBar(
         title: Text('Edit Entry'),
         actions: [
+          IconButton(
+            icon: Icon(Icons.bar_chart),
+            tooltip: 'View stats',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EntryStatsScreen(
+                    entryWord: widget.entry.word.trim(),
+                    allEntries: widget.allEntries,
+                  ),
+                ),
+              );
+            },
+          ),
           TextButton(
             onPressed: () {
               final editedEntry = WordEntry(

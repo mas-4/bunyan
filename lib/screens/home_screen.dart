@@ -7,6 +7,7 @@ import 'dart:io';
 import '../models.dart';
 import '../utils.dart';
 import 'edit_entry_screen.dart';
+import 'entry_stats_screen.dart';
 import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
 import 'time_suggestions_screen.dart';
@@ -418,7 +419,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         onTap: () => (_hasSearchText && !_showAllMatches)
             ? _bulkEditText(entry.word)
             : _editEntry(entry),
-        onLongPress: () => _enterBulkEditMode(entry),
+        onLongPress: () => (_hasSearchText && !_showAllMatches)
+            ? _openEntryStats(entry.word)
+            : _enterBulkEditMode(entry),
       ),
     );
   }
@@ -951,6 +954,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               _relatedEntriesWindow = relatedEntries;
             });
           },
+        ),
+      ),
+    );
+  }
+
+  void _openEntryStats(String entryWord) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EntryStatsScreen(
+          entryWord: entryWord.trim(),
+          allEntries: _entries,
         ),
       ),
     );
