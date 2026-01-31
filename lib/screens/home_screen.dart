@@ -819,32 +819,68 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   onPressed: _openTimeSuggestions,
                   tooltip: 'Time Suggestions',
                 ),
-                IconButton(
-                  icon: Icon(Icons.settings),
-                  onPressed: _openHotbarSettings,
-                  tooltip: 'Hotbar Settings',
-                ),
-                IconButton(
-                  icon: Icon(Icons.backup),
-                  onPressed: _openBackupScreen,
-                  tooltip: 'Backups',
-                ),
-                IconButton(
-                  icon: Icon(Icons.delete_forever),
-                  onPressed: _resetEntries,
-                  tooltip: 'Reset Data',
-                ),
-                IconButton(
-                  icon: Icon(Icons.import_export),
-                  onPressed: _importData,
-                  tooltip: 'Import Data',
-                ),
-                IconButton(
-                  icon: Icon(Icons.share),
-                  onPressed: _exportData,
-                  tooltip: 'Export Data',
-                ),
               ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
+              child: Text(
+                'Bunyan',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.settings),
+              title: Text('Hotbar Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _openHotbarSettings();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.backup),
+              title: Text('Backups'),
+              onTap: () {
+                Navigator.pop(context);
+                _openBackupScreen();
+              },
+            ),
+            Divider(),
+            ListTile(
+              leading: Icon(Icons.file_download),
+              title: Text('Import Data'),
+              onTap: () {
+                Navigator.pop(context);
+                _importData();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.share),
+              title: Text('Export Data'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportData();
+              },
+            ),
+            Divider(),
+            ListTile(
+              leading: Icon(Icons.delete_forever, color: Colors.red),
+              title: Text('Reset Data', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _resetEntries();
+              },
+            ),
+          ],
+        ),
       ),
       body: Column(
         children: [
