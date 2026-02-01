@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:confetti/confetti.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:math';
 
 import '../models.dart';
 import '../utils.dart';
@@ -23,6 +26,7 @@ class WordLoggerHome extends StatefulWidget {
 class WordLoggerHomeState extends State<WordLoggerHome> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  late ConfettiController _confettiController;
   List<WordEntry> _entries = [];
   List<WordEntry> _displayEntries = [];
   bool _isLoading = true;
@@ -48,9 +52,67 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return counts;
   }
 
+  // Generate 8-char hash from text + timestamp for todo tracking
+  String _generateTodoHash(String text, DateTime timestamp) {
+    final combined = '$text${timestamp.toIso8601String()}';
+    final bytes = utf8.encode(combined);
+    int hash = 0;
+    for (final byte in bytes) {
+      hash = ((hash << 5) - hash) + byte;
+      hash = hash & 0x7FFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0').substring(0, 8);
+  }
+
+  // Check if entry contains #todo
+  bool _isTodoEntry(WordEntry entry) {
+    return entry.word.toLowerCase().contains('#todo');
+  }
+
+  // Check if entry is a #done entry
+  bool _isDoneEntry(WordEntry entry) {
+    return entry.word.toLowerCase().startsWith('#done ');
+  }
+
+  // Extract hash from a #done entry (format: "#done <hash> <text>")
+  String? _extractDoneHash(WordEntry entry) {
+    if (!_isDoneEntry(entry)) return null;
+    final parts = entry.word.split(' ');
+    if (parts.length >= 2) {
+      return parts[1].toLowerCase();
+    }
+    return null;
+  }
+
+  // Get set of all done hashes for quick lookup
+  Set<String> get _doneHashes {
+    final hashes = <String>{};
+    for (final entry in _entries) {
+      final hash = _extractDoneHash(entry);
+      if (hash != null) {
+        hashes.add(hash);
+      }
+    }
+    return hashes;
+  }
+
+  // Check if a todo entry has been completed
+  bool _isTodoCompleted(WordEntry entry) {
+    if (!_isTodoEntry(entry)) return false;
+    final hash = _generateTodoHash(entry.word, entry.timestamp);
+    return _doneHashes.contains(hash);
+  }
+
+  // Check if currently filtering by #todo
+  bool get _isFilteringTodo {
+    final text = _controller.text.toLowerCase().trim();
+    return text == '#todo' || text.contains('#todo');
+  }
+
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(duration: Duration(seconds: 1));
     _initializeApp();
     _controller.addListener(_filterEntries);
   }
@@ -86,6 +148,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _confettiController.dispose();
     super.dispose();
   }
 
@@ -400,7 +463,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         }
       },
       child: ListTile(
-        title: Text(entry.word),
+        leading: (_isFilteringTodo && _isTodoEntry(entry) && !_isTodoCompleted(entry))
+            ? IconButton(
+                icon: Icon(Icons.check_circle_outline),
+                onPressed: () => _markTodoAsDone(entry),
+                tooltip: 'Mark as done',
+              )
+            : null,
+        title: Text(
+          entry.word,
+          style: (_isTodoEntry(entry) && _isTodoCompleted(entry) && !_isFilteringTodo)
+              ? TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
+              : null,
+        ),
         subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -482,8 +557,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final taggedWords = getTagSuggestions(tagChar, partialTag);
 
         // Filter entries by the full search text, not just the tag
+        // Also hide completed todos when filtering by #todo
+        final isFilteringForTodo = trimmedText.toLowerCase().contains('#todo');
         final matchingEntries = _entries.where((entry) {
-          return entry.word.toLowerCase().contains(trimmedText.toLowerCase());
+          final matches = entry.word.toLowerCase().contains(trimmedText.toLowerCase());
+          if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
+            return false;
+          }
+          return matches;
         }).toList();
 
         setState(() {
@@ -506,8 +587,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       return;
     }
 
+    // Hide completed todos when filtering by #todo
+    final isFilteringForTodo = text.toLowerCase().contains('#todo');
     final matchingEntries = _entries.where((entry) {
-      return entry.word.toLowerCase().contains(text.toLowerCase());
+      final matches = entry.word.toLowerCase().contains(text.toLowerCase());
+      if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
+        return false;
+      }
+      return matches;
     }).toList();
 
     if (_showAllMatches) {
@@ -822,6 +909,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Future<void> _markTodoAsDone(WordEntry todoEntry) async {
+    if (!_isTodoEntry(todoEntry)) return;
+
+    final hash = _generateTodoHash(todoEntry.word, todoEntry.timestamp);
+    // Remove #todo from the text to avoid infinite loops
+    final cleanedText = todoEntry.word.replaceAll(RegExp(r'#todo', caseSensitive: false), '').trim();
+    final doneText = '#done $hash $cleanedText';
+
+    await _addEntry(doneText);
+    _confettiController.play();
+  }
+
   Future<void> _deleteEntry(WordEntry entryToDelete) async {
     try {
       final actualIndex = _entries.indexWhere(
@@ -989,8 +1088,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         .toSet()
         .length;
 
-    return Scaffold(
-      appBar: AppBar(
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
         title: Text(
           _bulkEditMode ? '${_selectedIndices.length} selected' : 'Bunyan 🪓',
         ),
@@ -1232,6 +1333,29 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           ),
         ],
       ),
-    );
+    ),
+    Align(
+      alignment: Alignment.topCenter,
+      child: ConfettiWidget(
+        confettiController: _confettiController,
+        blastDirection: pi / 2,
+        blastDirectionality: BlastDirectionality.explosive,
+        maxBlastForce: 20,
+        minBlastForce: 8,
+        emissionFrequency: 0.05,
+        numberOfParticles: 25,
+        gravity: 0.2,
+        colors: const [
+          Colors.green,
+          Colors.blue,
+          Colors.pink,
+          Colors.orange,
+          Colors.purple,
+          Colors.yellow,
+        ],
+      ),
+    ),
+  ],
+);
   }
 }
