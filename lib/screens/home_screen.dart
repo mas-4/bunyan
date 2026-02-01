@@ -869,7 +869,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
-  Future<void> _addEntry(String word) async {
+  Future<void> _addEntry(String word, {bool clearController = true}) async {
     if (word.trim().isEmpty) return;
 
     final entry = WordEntry(word: word.trim(), timestamp: DateTime.now());
@@ -880,11 +880,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       setState(() {
         _entries.insert(0, entry);
-        _displayEntries = List.from(_entries);
+        _filterEntries();
       });
 
-      _controller.clear();
-      _focusNode.requestFocus();
+      if (clearController) {
+        _controller.clear();
+        _focusNode.requestFocus();
+      }
     } catch (e) {
       _showError("Error saving entry: $e");
     }
@@ -917,7 +919,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final cleanedText = todoEntry.word.replaceAll(RegExp(r'#todo', caseSensitive: false), '').trim();
     final doneText = '#done $hash $cleanedText';
 
-    await _addEntry(doneText);
+    await _addEntry(doneText, clearController: false);
     _confettiController.play();
   }
 
