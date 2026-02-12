@@ -23,13 +23,29 @@ Bunyan is a minimalist Flutter app for timestamped logging of daily events and s
 
 ## Architecture
 
-### Single-File Architecture
-The entire app is contained in `lib/main.dart` (~940 lines). This is intentional for simplicity and includes:
+### Multi-File Architecture
+The app is organized into multiple files for maintainability:
 
-- **DateTimeFormatter**: Custom class for formatting timestamps in various formats (date, time, days ago)
-- **WordEntry**: Data model for log entries with CSV serialization
-- **WordLoggerHome**: Main screen with entry list, filtering, and CSV file management
-- **EditEntryScreen**: Edit individual entries with tag suggestions
+- **lib/main.dart**: App entry point and MaterialApp configuration
+- **lib/models.dart**: Data models (`DateTimeFormatter`, `WordEntry`)
+- **lib/utils.dart**: Utility functions (file operations, backup management, settings)
+- **lib/frequency_cache.dart**: `EntryFrequencyCache` class for O(1) frequency lookups
+- **lib/screens/**: Screen widgets
+  - `home_screen.dart`: Main screen with entry list, filtering, and CSV file management
+  - `edit_entry_screen.dart`: Edit individual entries with tag suggestions
+  - `entry_stats_screen.dart`: Statistics for a specific entry word
+  - `hotbar_settings_screen.dart`: Configure quick-access tag buttons
+  - `backup_screen.dart`: Backup management
+  - `time_suggestions_screen.dart`: Time-based entry suggestions
+  - `settings_screen.dart`: App settings
+
+### EntryFrequencyCache
+Centralized cache that provides O(1) lookups for:
+- **Word counts**: How many times each exact word appears (for duplicate detection)
+- **Tag frequencies**: Count of each tag for sorting in hotbar settings
+- **Done hashes**: Set of completion hashes for todo tracking
+
+The cache is built once on app load and updated incrementally when entries change, avoiding O(n) iterations during rendering.
 
 ### Key Features
 - **CSV Storage**: All data stored in device documents directory as `bunyan.csv`
@@ -46,8 +62,7 @@ The entire app is contained in `lib/main.dart` (~940 lines). This is intentional
 5. File operations are async but UI updates immediately for responsiveness
 
 ### File Structure
-- Single Dart file contains all logic
-- No separate models, services, or screens
+- Modular architecture with separate files for models, utils, cache, and screens
 - Uses standard Flutter material design
 - Supports both light/dark themes via system settings
 

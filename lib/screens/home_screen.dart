@@ -9,6 +9,7 @@ import 'dart:math';
 
 import '../models.dart';
 import '../utils.dart';
+import '../frequency_cache.dart';
 import 'edit_entry_screen.dart';
 import 'entry_stats_screen.dart';
 import 'hotbar_settings_screen.dart';
@@ -43,14 +44,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   bool _bulkEditMode = false;
   final Set<int> _selectedIndices = {};
 
-  // Frequency map: word -> count
-  Map<String, int> get _wordFrequencies {
-    final counts = <String, int>{};
-    for (final entry in _entries) {
-      counts[entry.word] = (counts[entry.word] ?? 0) + 1;
-    }
-    return counts;
-  }
+  // Centralized frequency cache for O(1) lookups
+  final EntryFrequencyCache _cache = EntryFrequencyCache();
 
   // Generate 8-char hash from text + timestamp for todo tracking
   String _generateTodoHash(String text, DateTime timestamp) {
@@ -69,38 +64,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return entry.word.toLowerCase().contains('#todo');
   }
 
-  // Check if entry is a #done entry
-  bool _isDoneEntry(WordEntry entry) {
-    return entry.word.toLowerCase().startsWith('#done ');
-  }
-
-  // Extract hash from a #done entry (format: "#done <hash> <text>")
-  String? _extractDoneHash(WordEntry entry) {
-    if (!_isDoneEntry(entry)) return null;
-    final parts = entry.word.split(' ');
-    if (parts.length >= 2) {
-      return parts[1].toLowerCase();
-    }
-    return null;
-  }
-
-  // Get set of all done hashes for quick lookup
-  Set<String> get _doneHashes {
-    final hashes = <String>{};
-    for (final entry in _entries) {
-      final hash = _extractDoneHash(entry);
-      if (hash != null) {
-        hashes.add(hash);
-      }
-    }
-    return hashes;
-  }
-
   // Check if a todo entry has been completed
   bool _isTodoCompleted(WordEntry entry) {
     if (!_isTodoEntry(entry)) return false;
     final hash = _generateTodoHash(entry.word, entry.timestamp);
-    return _doneHashes.contains(hash);
+    return _cache.isDoneHash(hash);
   }
 
   // Check if currently filtering by #todo
@@ -297,10 +265,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       final indicesToRemove = _selectedIndices.toList()
         ..sort((a, b) => b.compareTo(a));
       for (int index in indicesToRemove) {
+        _cache.removeEntry(_entries[index]);
         _entries.removeAt(index);
       }
 
       _entries.add(combinedEntry);
+      _cache.addEntry(combinedEntry);
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       setState(() {
@@ -339,6 +309,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           .toList();
 
       _entries.addAll(duplicates);
+      for (final entry in duplicates) {
+        _cache.addEntry(entry);
+      }
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       setState(() {
@@ -365,7 +338,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
-    final count = _wordFrequencies[entry.word] ?? 1;
+    final count = _cache.getWordCount(entry.word);
 
     if (_bulkEditMode) {
       final actualIndex = _entries.indexOf(entry);
@@ -513,12 +486,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             .reversed
             .toList();
 
+        _cache.buildFromEntries(entries);
+
         setState(() {
           _entries = entries;
           _displayEntries = List.from(entries);
           _isLoading = false;
         });
       } else {
+        _cache.buildFromEntries([]);
         setState(() {
           _isLoading = false;
         });
@@ -626,46 +602,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   List<String> getTagSuggestions(String tagChar, [String partialTag = '']) {
-    final allTags = _entries
-        .where((entry) => entry.word.contains(tagChar))
-        .expand((entry) {
-          final words = entry.word.split(' ');
-          return words.where((word) => word.startsWith(tagChar));
-        })
-        .toSet()
-        .toList();
-
-    if (partialTag.isNotEmpty) {
-      return allTags
-          .where(
-            (tag) => tag.toLowerCase().startsWith(partialTag.toLowerCase()),
-          )
-          .toList();
-    }
-
-    return allTags;
-  }
-
-  Map<String, int> _getTagFrequencies() {
-    final tagCounts = <String, int>{};
-
-    for (final entry in _entries) {
-      final words = entry.word.split(' ');
-      for (final word in words) {
-        if (word.isNotEmpty && tagLeaders.contains(word[0])) {
-          tagCounts[word] = (tagCounts[word] ?? 0) + 1;
-        }
-      }
-    }
-
-    return tagCounts;
+    return _cache.getTagSuggestions(tagChar, partialTag);
   }
 
   List<MapEntry<String, int>> _getTagsSortedByFrequency() {
-    final frequencies = _getTagFrequencies();
-    final sortedEntries = frequencies.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sortedEntries;
+    return _cache.getTagsSortedByFrequency();
   }
 
   Future<void> _loadHotbarTags() async {
@@ -731,6 +672,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       final file = await getFile();
       if (await file.exists()) await file.delete();
 
+      _cache.buildFromEntries([]);
       setState(() {
         _entries.clear();
         _displayEntries.clear();
@@ -768,6 +710,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       );
 
       if (actualIndex == -1) return;
+
+      _cache.removeEntry(oldEntry);
+      _cache.addEntry(newEntry);
 
       setState(() {
         _entries[actualIndex] = newEntry;
@@ -839,10 +784,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       int updatedCount = 0;
       for (int i = 0; i < _entries.length; i++) {
         if (_entries[i].word.trim() == oldWordTrimmed) {
-          _entries[i] = WordEntry(
+          final oldEntry = _entries[i];
+          final newEntry = WordEntry(
             word: newWord,
             timestamp: _entries[i].timestamp,
           );
+          _cache.removeEntry(oldEntry);
+          _cache.addEntry(newEntry);
+          _entries[i] = newEntry;
           updatedCount++;
         }
       }
@@ -878,6 +827,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       final file = await getFile();
       await file.writeAsString('${entry.toCsv()}\n', mode: FileMode.append);
 
+      _cache.addEntry(entry);
+
       setState(() {
         _entries.insert(0, entry);
         _filterEntries();
@@ -900,6 +851,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     try {
       final file = await getFile();
       await file.writeAsString('${entry.toCsv()}\n', mode: FileMode.append);
+
+      _cache.addEntry(entry);
 
       setState(() {
         _entries.add(entry);
@@ -932,6 +885,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       );
 
       if (actualIndex == -1) return;
+
+      _cache.removeEntry(entryToDelete);
 
       setState(() {
         _entries.removeAt(actualIndex);
