@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
@@ -28,7 +29,9 @@ class WordLoggerHome extends StatefulWidget {
 class WordLoggerHomeState extends State<WordLoggerHome> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   late ConfettiController _confettiController;
+  bool _collapseInput = false;
   List<WordEntry> _entries = [];
   List<WordEntry> _displayEntries = [];
   bool _isLoading = true;
@@ -72,6 +75,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return _cache.isDoneHash(hash);
   }
 
+  // Check if entry is pinned
+  bool _isPinned(WordEntry entry) {
+    return entry.word.toLowerCase().contains('#pin');
+  }
+
+  // Sort pinned entries first, preserving relative order within each group
+  List<WordEntry> _withPinnedFirst(List<WordEntry> entries) {
+    final pinned = entries.where(_isPinned).toList();
+    final unpinned = entries.where((e) => !_isPinned(e)).toList();
+    return [...pinned, ...unpinned];
+  }
+
   // Check if currently filtering by #todo
   bool get _isFilteringTodo {
     final text = _controller.text.toLowerCase().trim();
@@ -84,6 +99,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     _confettiController = ConfettiController(duration: Duration(seconds: 1));
     _initializeApp();
     _controller.addListener(_filterEntries);
+    _scrollController.addListener(_onScroll);
   }
 
   Future<void> _initializeApp() async {
@@ -103,6 +119,16 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     });
   }
 
+  void _onScroll() {
+    if (_hasSearchText) return;
+    final pos = _scrollController.position;
+    if (pos.userScrollDirection == ScrollDirection.reverse && !_collapseInput) {
+      setState(() => _collapseInput = true);
+    } else if (pos.userScrollDirection == ScrollDirection.forward && _collapseInput) {
+      setState(() => _collapseInput = false);
+    }
+  }
+
   Future<void> _checkDailyBackup() async {
     try {
       if (await shouldBackupToday()) {
@@ -117,6 +143,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     _confettiController.dispose();
     super.dispose();
   }
@@ -184,7 +211,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -275,7 +302,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -316,7 +343,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -334,6 +361,53 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _exitBulkEditMode();
     } catch (e) {
       _showError('Error duplicating entries: $e');
+    }
+  }
+
+  Future<void> _bulkTogglePin() async {
+    if (_selectedIndices.isEmpty) return;
+
+    try {
+      final indicesToUpdate = _selectedIndices.toList()..sort();
+
+      for (int index in indicesToUpdate) {
+        final entry = _entries[index];
+        final oldEntry = entry;
+        String newWord;
+
+        if (_isPinned(entry)) {
+          newWord = entry.word
+              .replaceAll(RegExp(r'\s*#pin', caseSensitive: false), '')
+              .trim();
+        } else {
+          newWord = '${entry.word} #pin';
+        }
+
+        final newEntry = WordEntry(word: newWord, timestamp: entry.timestamp);
+        _cache.removeEntry(oldEntry);
+        _cache.addEntry(newEntry);
+        _entries[index] = newEntry;
+      }
+
+      setState(() {
+        _displayEntries = _withPinnedFirst(List.from(_entries));
+      });
+
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError("${_selectedIndices.length} entries pin toggled");
+      _exitBulkEditMode();
+    } catch (e) {
+      _showError('Error toggling pin: $e');
     }
   }
 
@@ -491,7 +565,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
         setState(() {
           _entries = entries;
-          _displayEntries = List.from(entries);
+          _displayEntries = _withPinnedFirst(List.from(entries));
           _isLoading = false;
         });
       } else {
@@ -547,7 +621,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         setState(() {
           _suggestions = taggedWords;
           _showSuggestions = taggedWords.isNotEmpty;
-          _displayEntries = matchingEntries;
+          _displayEntries = _withPinnedFirst(matchingEntries);
           _hasSearchText = true;
         });
         return;
@@ -556,7 +630,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     if (text.isEmpty) {
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
         _showSuggestions = false;
         _showAllMatches = false;
         _hasSearchText = false;
@@ -576,7 +650,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     if (_showAllMatches) {
       setState(() {
-        _displayEntries = matchingEntries;
+        _displayEntries = _withPinnedFirst(matchingEntries);
         _showSuggestions = false;
         _hasSearchText = true;
       });
@@ -596,7 +670,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     setState(() {
-      _displayEntries = uniqueList;
+      _displayEntries = _withPinnedFirst(uniqueList);
       _showSuggestions = false;
       _hasSearchText = true;
     });
@@ -718,7 +792,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       setState(() {
         _entries[actualIndex] = newEntry;
         _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -798,7 +872,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       }
 
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -858,7 +932,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       setState(() {
         _entries.add(entry);
         _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
     } catch (e) {
       _showError("Error saving entry: $e");
@@ -1035,7 +1109,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       }
 
       setState(() {
-        _displayEntries = List.from(_entries);
+        _displayEntries = _withPinnedFirst(List.from(_entries));
       });
 
       final file = await getFile();
@@ -1121,6 +1195,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     icon: Icon(Icons.copy),
                     onPressed: _bulkDuplicateEntries,
                     tooltip: 'Duplicate',
+                  ),
+                if (_selectedIndices.isNotEmpty)
+                  IconButton(
+                    icon: Icon(Icons.push_pin),
+                    onPressed: _bulkTogglePin,
+                    tooltip: 'Pin/Unpin',
                   ),
                 if (_selectedIndices.isNotEmpty)
                   IconButton(
@@ -1217,127 +1297,136 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                if (_hotbarTags.isNotEmpty)
-                  Container(
-                    margin: EdgeInsets.only(bottom: 8),
-                    height: 40,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _hotbarTags.length,
-                      itemBuilder: (context, index) {
-                        final tag = _hotbarTags[index];
-                        return Padding(
-                          padding: EdgeInsets.only(right: 8),
-                          child: OutlinedButton(
-                            onPressed: () => _insertTag(tag),
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(horizontal: 12),
+          AnimatedSize(
+            duration: Duration(milliseconds: 200),
+            child: _collapseInput
+                ? SizedBox.shrink()
+                : Column(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            if (_hotbarTags.isNotEmpty)
+                              Container(
+                                margin: EdgeInsets.only(bottom: 8),
+                                height: 40,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: _hotbarTags.length,
+                                  itemBuilder: (context, index) {
+                                    final tag = _hotbarTags[index];
+                                    return Padding(
+                                      padding: EdgeInsets.only(right: 8),
+                                      child: OutlinedButton(
+                                        onPressed: () => _insertTag(tag),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: EdgeInsets.symmetric(horizontal: 12),
+                                        ),
+                                        child: Text(tag),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            TextField(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              maxLines: null,
+                              minLines: 1,
+                              textInputAction: TextInputAction.send,
+                              decoration: InputDecoration(
+                                labelText: 'Enter a log',
+                                border: OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: Icon(Icons.clear),
+                                  onPressed: () => _controller.clear(),
+                                ),
+                              ),
+                              onSubmitted: _addEntry,
+                              autofocus: true,
                             ),
-                            child: Text(tag),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLines: null,
-                  minLines: 1,
-                  textInputAction: TextInputAction.send,
-                  decoration: InputDecoration(
-                    labelText: 'Enter a log',
-                    border: OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(Icons.clear),
-                      onPressed: () => _controller.clear(),
-                    ),
-                  ),
-                  onSubmitted: _addEntry,
-                  autofocus: true,
-                ),
-                if (_hasSearchText && !_showSuggestions)
-                  Container(
-                    margin: EdgeInsets.only(top: 8),
-                    child: OutlinedButton.icon(
-                      icon: Icon(
-                        _showAllMatches ? Icons.filter_1 : Icons.filter_list,
+                            if (_hasSearchText && !_showSuggestions)
+                              Container(
+                                margin: EdgeInsets.only(top: 8),
+                                child: OutlinedButton.icon(
+                                  icon: Icon(
+                                    _showAllMatches ? Icons.filter_1 : Icons.filter_list,
+                                  ),
+                                  label: Text(_showAllMatches ? 'Show Unique' : 'Show All'),
+                                  onPressed: () {
+                                    setState(() {
+                                      _showAllMatches = !_showAllMatches;
+                                      _filterEntries();
+                                    });
+                                  },
+                                ),
+                              ),
+                            if (_showSuggestions)
+                              Container(
+                                margin: EdgeInsets.only(top: 4),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Column(
+                                  children: _suggestions.map((suggestion) {
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(suggestion),
+                                      onTap: () {
+                                        final currentText = _controller.text;
+                                        int tagStartIndex = currentText.length;
+                                        for (int i = currentText.length - 1; i >= 0; i--) {
+                                          if (tagLeaders.contains(currentText[i])) {
+                                            if (i == 0 || currentText[i - 1] == ' ') {
+                                              tagStartIndex = i;
+                                              break;
+                                            }
+                                          }
+                                        }
+
+                                        final textBeforeTag = currentText.substring(
+                                          0,
+                                          tagStartIndex,
+                                        );
+                                        _controller.text = '$textBeforeTag$suggestion ';
+
+                                        _controller.selection = TextSelection.collapsed(
+                                          offset: _controller.text.length,
+                                        );
+
+                                        setState(() {
+                                          _showSuggestions = false;
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                      label: Text(_showAllMatches ? 'Show Unique' : 'Show All'),
-                      onPressed: () {
-                        setState(() {
-                          _showAllMatches = !_showAllMatches;
-                          _filterEntries();
-                        });
-                      },
-                    ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total entries: ${_entries.length}',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            Text(
+                              'Unique entries: $uniqueWords',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(),
+                    ],
                   ),
-                if (_showSuggestions)
-                  Container(
-                    margin: EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Column(
-                      children: _suggestions.map((suggestion) {
-                        return ListTile(
-                          dense: true,
-                          title: Text(suggestion),
-                          onTap: () {
-                            final currentText = _controller.text;
-                            int tagStartIndex = currentText.length;
-                            for (int i = currentText.length - 1; i >= 0; i--) {
-                              if (tagLeaders.contains(currentText[i])) {
-                                if (i == 0 || currentText[i - 1] == ' ') {
-                                  tagStartIndex = i;
-                                  break;
-                                }
-                              }
-                            }
-
-                            final textBeforeTag = currentText.substring(
-                              0,
-                              tagStartIndex,
-                            );
-                            _controller.text = '$textBeforeTag$suggestion ';
-
-                            _controller.selection = TextSelection.collapsed(
-                              offset: _controller.text.length,
-                            );
-
-                            setState(() {
-                              _showSuggestions = false;
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ),
-              ],
-            ),
           ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Total entries: ${_entries.length}',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                Text(
-                  'Unique entries: $uniqueWords',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-          Divider(),
           Expanded(
             child: _displayEntries.isEmpty
                 ? Center(
@@ -1348,6 +1437,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                     ),
                   )
                 : ListView.builder(
+                    controller: _scrollController,
                     itemCount: _displayEntries.length,
                     itemBuilder: (context, index) {
                       final entry = _displayEntries[index];
