@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 const String tagLeaders = '!@#^&~+=\\|';
@@ -208,4 +209,18 @@ Future<int> getBackupEntryCount(File backupFile) async {
   if (!await backupFile.exists()) return 0;
   final contents = await backupFile.readAsString();
   return contents.split('\n').where((line) => line.isNotEmpty).length;
+}
+
+const _backupChannel = MethodChannel('com.example.bunyan/backup');
+
+/// Request Android to back up app data to Google cloud.
+/// This notifies the OS that data has changed and should be backed up soon.
+Future<bool> requestGoogleBackup() async {
+  try {
+    if (!Platform.isAndroid) return false;
+    final result = await _backupChannel.invokeMethod('requestBackup');
+    return result == true;
+  } catch (e) {
+    return false;
+  }
 }

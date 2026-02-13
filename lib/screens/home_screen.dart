@@ -1415,6 +1415,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 _openSettings();
               },
             ),
+            ListTile(
+              leading: Icon(Icons.cloud_upload),
+              title: Text('Sync to Google Backup'),
+              subtitle: Text('Request backup before upgrading'),
+              onTap: () async {
+                Navigator.pop(context);
+                final ok = await requestGoogleBackup();
+                _showError(ok
+                    ? 'Backup requested — Android will sync shortly'
+                    : 'Not available on this platform');
+              },
+            ),
             Divider(),
             ListTile(
               leading: Icon(Icons.file_download),
@@ -1493,7 +1505,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                                 ),
                               ),
                               onSubmitted: _addEntry,
-                              autofocus: true,
                             ),
                             if (_hasSearchText && !_showSuggestions)
                               Container(

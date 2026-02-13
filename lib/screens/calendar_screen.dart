@@ -369,11 +369,13 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       leading: ce.hasWhenTag
           ? Icon(Icons.event, size: 18, color: Theme.of(context).colorScheme.primary)
           : null,
-      trailing: IconButton(
-        icon: Icon(Icons.notification_add, size: 20),
-        tooltip: 'Add to system calendar',
-        onPressed: () => _addToSystemCalendar(ce),
-      ),
+      trailing: ce.hasWhenTag
+          ? IconButton(
+              icon: Icon(Icons.notification_add, size: 20),
+              tooltip: 'Add to system calendar',
+              onPressed: () => _addToSystemCalendar(ce),
+            )
+          : null,
       dense: true,
     );
   }

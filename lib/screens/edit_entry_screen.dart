@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:add_2_calendar/add_2_calendar.dart';
 
 import '../models.dart';
 import '../utils.dart';
@@ -230,6 +231,22 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
       appBar: AppBar(
         title: Text('Edit Entry'),
         actions: [
+          if (whenTagRegex.hasMatch(widget.entry.word))
+            IconButton(
+              icon: Icon(Icons.notification_add),
+              tooltip: 'Add to system calendar',
+              onPressed: () {
+                final dates = extractWhenDates(widget.entry.word);
+                if (dates.isEmpty) return;
+                final displayText = widget.entry.word.replaceAll(whenTagRegex, '').trim();
+                final event = Event(
+                  title: displayText,
+                  startDate: dates.first,
+                  endDate: dates.first.add(const Duration(hours: 1)),
+                );
+                Add2Calendar.addEvent2Cal(event);
+              },
+            ),
           IconButton(
             icon: Icon(Icons.bar_chart),
             tooltip: 'View stats',
