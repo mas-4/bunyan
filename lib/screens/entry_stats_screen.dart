@@ -110,6 +110,85 @@ class EntryStatsScreen extends StatelessWidget {
     return counts;
   }
 
+  bool get _isSymptom => entryWord.toLowerCase().contains('@symptom');
+
+  String _dayKey(DateTime dt) => '${dt.year}-${dt.month}-${dt.day}';
+
+  /// TF-IDF inspired trigger analysis.
+  /// "TF" = how often an entry appears in the 24h before the symptom.
+  /// "IDF" = penalize entries that appear on most days anyway.
+  /// Lift = P(entry before symptom) / P(entry on any day). Lift > 1 = real signal.
+  List<Map<String, dynamic>> _getTriggerAnalysis(
+    List<WordEntry> symptomEntries, {
+    int windowHours = 24,
+  }) {
+    if (symptomEntries.length < 2) return [];
+
+    final symptomWord = entryWord.trim().toLowerCase();
+    final totalSymptoms = symptomEntries.length;
+
+    // Step 1: Count how many unique days each entry appears on (baseline frequency)
+    final totalDays = allEntries.map((e) => _dayKey(e.timestamp)).toSet().length;
+    final entryDays = <String, Set<String>>{}; // key -> set of day keys
+    for (final entry in allEntries) {
+      final key = entry.word.split(':')[0].trim();
+      if (key.toLowerCase() == symptomWord) continue;
+      entryDays.putIfAbsent(key, () => {});
+      entryDays[key]!.add(_dayKey(entry.timestamp));
+    }
+
+    // Step 2: For each symptom occurrence, find entries in the lookback window
+    final triggerCounts = <String, int>{}; // key -> symptom occurrences preceded by this entry
+    final triggerLeadTimes = <String, List<Duration>>{};
+
+    for (final symptom in symptomEntries) {
+      final windowStart = symptom.timestamp.subtract(Duration(hours: windowHours));
+      final seenForThis = <String>{};
+
+      for (final entry in allEntries) {
+        final word = entry.word.trim();
+        if (word.toLowerCase() == symptomWord) continue;
+        if (entry.timestamp.isBefore(windowStart)) continue;
+        if (entry.timestamp.isAfter(symptom.timestamp)) continue;
+
+        final key = word.split(':')[0].trim();
+        if (key.isEmpty || seenForThis.contains(key)) continue;
+
+        seenForThis.add(key);
+        triggerCounts[key] = (triggerCounts[key] ?? 0) + 1;
+        triggerLeadTimes.putIfAbsent(key, () => []);
+        triggerLeadTimes[key]!.add(symptom.timestamp.difference(entry.timestamp));
+      }
+    }
+
+    // Step 3: Calculate lift for each potential trigger
+    final results = <Map<String, dynamic>>[];
+    for (final entry in triggerCounts.entries) {
+      if (entry.value < 2) continue;
+
+      final triggerRate = entry.value / totalSymptoms;
+      final daysWithEntry = entryDays[entry.key]?.length ?? 1;
+      final baselineRate = daysWithEntry / totalDays;
+      final lift = baselineRate > 0 ? triggerRate / baselineRate : 0.0;
+
+      final leadTimes = triggerLeadTimes[entry.key]!;
+      final avgLeadMinutes = leadTimes.fold<int>(0, (s, d) => s + d.inMinutes) ~/ leadTimes.length;
+
+      results.add({
+        'word': entry.key,
+        'count': entry.value,
+        'rate': triggerRate,
+        'baselineRate': baselineRate,
+        'lift': lift,
+        'avgLead': Duration(minutes: avgLeadMinutes),
+      });
+    }
+
+    // Sort by lift descending — high lift = unusual before symptoms
+    results.sort((a, b) => (b['lift'] as double).compareTo(a['lift'] as double));
+    return results;
+  }
+
   Map<String, dynamic> _getStats(List<WordEntry> entries) {
     if (entries.isEmpty) {
       return {'count': 0};
@@ -214,6 +293,14 @@ class EntryStatsScreen extends StatelessWidget {
                   SizedBox(height: 24),
                 ],
 
+                // Trigger Analysis (only for @symptom entries)
+                if (_isSymptom && entries.length >= 2) ...[
+                  _buildSectionTitle(context, 'Potential Triggers (24h before)'),
+                  SizedBox(height: 8),
+                  _buildTriggerAnalysis(context, entries),
+                  SizedBox(height: 24),
+                ],
+
                 // Timeline
                 _buildSectionTitle(context, 'Timeline'),
                 SizedBox(height: 8),
@@ -257,6 +344,111 @@ class EntryStatsScreen extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Color _liftColor(double lift) {
+    if (lift >= 3.0) return Colors.red;
+    if (lift >= 2.0) return Colors.orange;
+    if (lift >= 1.5) return Colors.amber.shade700;
+    return Colors.grey;
+  }
+
+  Widget _buildTriggerAnalysis(BuildContext context, List<WordEntry> entries) {
+    final triggers = _getTriggerAnalysis(entries);
+    if (triggers.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'Not enough data to identify triggers yet.',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+      );
+    }
+
+    // Only show entries with lift > 1 (more likely before symptom than normal)
+    final significant = triggers.where((t) => (t['lift'] as double) > 1.0).toList();
+    if (significant.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'No unusual patterns found before this symptom.',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+      );
+    }
+
+    final maxLift = significant.first['lift'] as double;
+
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          children: significant.take(10).map((t) {
+            final lift = t['lift'] as double;
+            final count = t['count'] as int;
+            final word = t['word'] as String;
+            final rate = t['rate'] as double;
+            final baselineRate = t['baselineRate'] as double;
+            final avgLead = t['avgLead'] as Duration;
+            final pct = (rate * 100).round();
+            final basePct = (baselineRate * 100).round();
+            final color = _liftColor(lift);
+
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          word,
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(30),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${lift.toStringAsFixed(1)}x',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: (lift / maxLift).clamp(0.0, 1.0),
+                      backgroundColor: Colors.grey[200],
+                      color: color,
+                      minHeight: 6,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Before $pct% of symptoms ($count/${entries.length})  ·  '
+                    'Logged on $basePct% of days  ·  '
+                    '~${_formatDuration(avgLead)} before',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ),
       ),
     );
