@@ -16,6 +16,7 @@ import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
 import 'time_suggestions_screen.dart';
 import 'settings_screen.dart';
+import 'tag_manager_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -996,6 +997,64 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
+  Future<void> _openTagManager() async {
+    final tagsByFrequency = _getTagsSortedByFrequency();
+    final result = await Navigator.push<Map<String, String>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TagManagerScreen(
+          tagsByFrequency: tagsByFrequency,
+        ),
+      ),
+    );
+
+    if (result == null || result.isEmpty) return;
+
+    try {
+      int updatedCount = 0;
+      for (int i = 0; i < _entries.length; i++) {
+        final words = _entries[i].word.split(' ');
+        bool changed = false;
+        for (int j = 0; j < words.length; j++) {
+          if (result.containsKey(words[j])) {
+            words[j] = result[words[j]]!;
+            changed = true;
+          }
+        }
+        if (changed) {
+          final oldEntry = _entries[i];
+          final newEntry = WordEntry(
+            word: words.join(' '),
+            timestamp: oldEntry.timestamp,
+          );
+          _cache.removeEntry(oldEntry);
+          _cache.addEntry(newEntry);
+          _entries[i] = newEntry;
+          updatedCount++;
+        }
+      }
+
+      setState(() {
+        _displayEntries = List.from(_entries);
+      });
+
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError('$updatedCount entries updated');
+    } catch (e) {
+      _showError('Error renaming tags: $e');
+    }
+  }
+
   Future<void> _openSettings() async {
     await Navigator.push(
       context,
@@ -1109,6 +1168,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               onTap: () {
                 Navigator.pop(context);
                 _openHotbarSettings();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.label),
+              title: Text('Manage Tags'),
+              onTap: () {
+                Navigator.pop(context);
+                _openTagManager();
               },
             ),
             ListTile(
