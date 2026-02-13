@@ -3,7 +3,7 @@
         android:label="Bunyan"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
-        android:allowBackup="false">
+        android:allowBackup="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

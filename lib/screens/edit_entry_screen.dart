@@ -31,6 +31,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
   late DateTime _selectedDateTime;
   List<String> _suggestions = [];
   bool _showSuggestions = false;
+  bool _whenPickerActive = false;
 
   @override
   void initState() {
@@ -63,6 +64,27 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
     final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute, 0);
     return formatWhenTag(picked);
+  }
+
+  Future<void> _handleWhenAutoTrigger(int tagStartIndex) async {
+    final result = await _showWhenPicker();
+    _whenPickerActive = false;
+    if (result == null || !mounted) return;
+
+    final currentText = _wordController.text;
+    final textBeforeTag = currentText.substring(0, tagStartIndex);
+    final afterTagStart = currentText.substring(tagStartIndex);
+    final whenEnd = afterTagStart.toLowerCase().startsWith('#when')
+        ? tagStartIndex + 5
+        : currentText.length;
+    final textAfterTag = currentText.substring(whenEnd);
+
+    _wordController.text = '$textBeforeTag$result$textAfterTag ';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wordController.selection = TextSelection.collapsed(
+        offset: _wordController.text.length,
+      );
+    });
   }
 
   Future<void> _selectDate() async {
@@ -171,6 +193,23 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
       if (lastTagIndex != -1 && tagChar != null) {
         final partialTag = trimmedText.substring(lastTagIndex);
         final suggestions = widget.getTagSuggestions(tagChar, partialTag);
+
+        // Hide suggestions that exactly match what's already typed
+        suggestions.removeWhere((s) => s.toLowerCase() == partialTag.toLowerCase());
+
+        // Auto-trigger #when picker when typed exactly
+        if (partialTag.toLowerCase() == '#when' && !_whenPickerActive) {
+          _whenPickerActive = true;
+          setState(() {
+            _showSuggestions = false;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) => _handleWhenAutoTrigger(lastTagIndex));
+          return;
+        }
+        if (partialTag.toLowerCase() != '#when') {
+          _whenPickerActive = false;
+        }
+
         setState(() {
           _suggestions = suggestions;
           _showSuggestions = suggestions.isNotEmpty;

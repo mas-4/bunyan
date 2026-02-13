@@ -48,6 +48,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   bool _bulkEditMode = false;
   final Set<int> _selectedIndices = {};
+  bool _whenPickerActive = false;
 
   // Centralized frequency cache for O(1) lookups
   final EntryFrequencyCache _cache = EntryFrequencyCache();
@@ -653,6 +654,24 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       if (lastTagIndex != -1 && tagChar != null) {
         final partialTag = trimmedText.substring(lastTagIndex);
         final taggedWords = getTagSuggestions(tagChar, partialTag);
+
+        // Hide suggestions that exactly match what's already typed
+        taggedWords.removeWhere((s) => s.toLowerCase() == partialTag.toLowerCase());
+
+        // Auto-trigger #when picker when typed exactly
+        if (partialTag.toLowerCase() == '#when' && !_whenPickerActive) {
+          _whenPickerActive = true;
+          setState(() {
+            _showSuggestions = false;
+            _hasSearchText = true;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) => _handleWhenAutoTrigger(lastTagIndex));
+          return;
+        }
+        // Reset flag when text moves away from #when
+        if (partialTag.toLowerCase() != '#when') {
+          _whenPickerActive = false;
+        }
 
         // Filter entries by the full search text, not just the tag
         // Also hide completed todos when filtering by #todo
@@ -1263,6 +1282,26 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute, 0);
     return formatWhenTag(dt);
+  }
+
+  Future<void> _handleWhenAutoTrigger(int tagStartIndex) async {
+    final result = await _showWhenPicker();
+    _whenPickerActive = false;
+    if (result == null || !mounted) return;
+
+    final currentText = _controller.text;
+    final textBeforeTag = currentText.substring(0, tagStartIndex);
+    // Find end of #when in current text (in case user typed more)
+    final afterTagStart = currentText.substring(tagStartIndex);
+    final whenEnd = afterTagStart.toLowerCase().startsWith('#when')
+        ? tagStartIndex + 5
+        : currentText.length;
+    final textAfterTag = currentText.substring(whenEnd);
+
+    final newText = '$textBeforeTag$result$textAfterTag ';
+    _controller.text = newText;
+    _controller.selection = TextSelection.collapsed(offset: newText.length);
+    _focusNode.requestFocus();
   }
 
   @override
