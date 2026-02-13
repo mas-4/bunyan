@@ -4,6 +4,52 @@ import 'package:path_provider/path_provider.dart';
 const String tagLeaders = '!@#^&~+=\\|';
 const int maxBackups = 5;
 
+/// Regex matching #when[YYYY-MM-DD H:MM:SS AM/PM]
+final RegExp whenTagRegex = RegExp(r'#when\[\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M\]');
+
+/// Parse the datetime value inside a #when[...] tag.
+DateTime? parseWhenDateTime(String tag) {
+  final match = RegExp(r'#when\[(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)\]').firstMatch(tag);
+  if (match == null) return null;
+  final year = int.parse(match.group(1)!);
+  final month = int.parse(match.group(2)!);
+  final day = int.parse(match.group(3)!);
+  var hour = int.parse(match.group(4)!);
+  final minute = int.parse(match.group(5)!);
+  final second = int.parse(match.group(6)!);
+  final period = match.group(7)!;
+  if (period == 'AM' && hour == 12) hour = 0;
+  if (period == 'PM' && hour != 12) hour += 12;
+  return DateTime(year, month, day, hour, minute, second);
+}
+
+/// Format a DateTime as a #when[...] tag string.
+String formatWhenTag(DateTime dt) {
+  final y = dt.year.toString();
+  final m = dt.month.toString().padLeft(2, '0');
+  final d = dt.day.toString().padLeft(2, '0');
+  var hour = dt.hour;
+  final period = hour >= 12 ? 'PM' : 'AM';
+  if (hour == 0) {
+    hour = 12;
+  } else if (hour > 12) {
+    hour -= 12;
+  }
+  final min = dt.minute.toString().padLeft(2, '0');
+  final sec = dt.second.toString().padLeft(2, '0');
+  return '#when[$y-$m-$d $hour:$min:$sec $period]';
+}
+
+/// Extract all #when dates from entry text.
+List<DateTime> extractWhenDates(String text) {
+  final dates = <DateTime>[];
+  for (final match in whenTagRegex.allMatches(text)) {
+    final dt = parseWhenDateTime(match.group(0)!);
+    if (dt != null) dates.add(dt);
+  }
+  return dates;
+}
+
 // Default time windows in minutes
 const int defaultAroundNowWindow = 60;
 const int defaultRelatedEntriesWindow = 30;

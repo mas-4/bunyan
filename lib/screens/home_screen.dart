@@ -18,6 +18,7 @@ import 'backup_screen.dart';
 import 'time_suggestions_screen.dart';
 import 'settings_screen.dart';
 import 'tag_manager_screen.dart';
+import 'calendar_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -411,26 +412,55 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
   }
 
+  Widget? _pinnedLeading(WordEntry entry) {
+    if (!_isPinned(entry)) return null;
+    return Icon(Icons.push_pin, size: 18, color: Colors.grey.shade500);
+  }
+
+  Widget _wrapPinned(WordEntry entry, Widget child) {
+    if (!_isPinned(entry)) return child;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.white10 : Colors.black12,
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
     final count = _cache.getWordCount(entry.word);
+    final pinned = _isPinned(entry);
 
     if (_bulkEditMode) {
       final actualIndex = _entries.indexOf(entry);
       final isSelected = _selectedIndices.contains(actualIndex);
 
-      return ListTile(
-        leading: Checkbox(
-          value: isSelected,
-          onChanged: (bool? value) {
-            setState(() {
-              if (value == true) {
-                _selectedIndices.add(actualIndex);
-              } else {
-                _selectedIndices.remove(actualIndex);
-              }
-            });
-          },
+      return _wrapPinned(entry, ListTile(
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (pinned) Icon(Icons.push_pin, size: 18, color: Colors.grey.shade500),
+            Checkbox(
+              value: isSelected,
+              onChanged: (bool? value) {
+                setState(() {
+                  if (value == true) {
+                    _selectedIndices.add(actualIndex);
+                  } else {
+                    _selectedIndices.remove(actualIndex);
+                  }
+                });
+              },
+            ),
+          ],
         ),
         title: Text(entry.word),
         subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
@@ -458,10 +488,33 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             }
           });
         },
-      );
+      ));
     }
 
-    return Dismissible(
+    Widget? leading;
+    if (_isFilteringTodo && _isTodoEntry(entry) && !_isTodoCompleted(entry)) {
+      leading = pinned
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.push_pin, size: 18, color: Colors.grey.shade500),
+                IconButton(
+                  icon: Icon(Icons.check_circle_outline),
+                  onPressed: () => _markTodoAsDone(entry),
+                  tooltip: 'Mark as done',
+                ),
+              ],
+            )
+          : IconButton(
+              icon: Icon(Icons.check_circle_outline),
+              onPressed: () => _markTodoAsDone(entry),
+              tooltip: 'Mark as done',
+            );
+    } else {
+      leading = _pinnedLeading(entry);
+    }
+
+    return _wrapPinned(entry, Dismissible(
       key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
       dismissThresholds: const {
         DismissDirection.endToStart: 0.9,
@@ -511,13 +564,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         }
       },
       child: ListTile(
-        leading: (_isFilteringTodo && _isTodoEntry(entry) && !_isTodoCompleted(entry))
-            ? IconButton(
-                icon: Icon(Icons.check_circle_outline),
-                onPressed: () => _markTodoAsDone(entry),
-                tooltip: 'Mark as done',
-              )
-            : null,
+        leading: leading,
         title: Text(
           entry.word,
           style: (_isTodoEntry(entry) && _isTodoCompleted(entry) && !_isFilteringTodo)
@@ -546,7 +593,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ? _openEntryStats(entry.word)
             : _enterBulkEditMode(entry),
       ),
-    );
+    ));
   }
 
   Future<void> _loadEntries() async {
@@ -677,7 +724,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   List<String> getTagSuggestions(String tagChar, [String partialTag = '']) {
-    return _cache.getTagSuggestions(tagChar, partialTag);
+    final suggestions = _cache.getTagSuggestions(tagChar, partialTag);
+    // Always offer #when as a built-in suggestion when typing #w...
+    if (tagChar == '#' &&
+        '#when'.startsWith(partialTag.toLowerCase()) &&
+        !suggestions.contains('#when')) {
+      return ['#when', ...suggestions];
+    }
+    return suggestions;
   }
 
   List<MapEntry<String, int>> _getTagsSortedByFrequency() {
@@ -1160,12 +1214,55 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
-  void _insertTag(String tag) {
+  void _insertTagAtCursor(String tag) {
     final currentText = _controller.text;
-    final newText = currentText.isEmpty ? '$tag ' : '$currentText $tag ';
+    final selection = _controller.selection;
+    final cursorPos = selection.baseOffset >= 0 ? selection.baseOffset : currentText.length;
+
+    final before = currentText.substring(0, cursorPos);
+    final after = currentText.substring(cursorPos);
+
+    // Add space before tag if needed
+    final needsSpaceBefore = before.isNotEmpty && !before.endsWith(' ');
+    // Add space after tag if needed
+    final needsSpaceAfter = after.isEmpty || !after.startsWith(' ');
+
+    final insert = '${needsSpaceBefore ? ' ' : ''}$tag${needsSpaceAfter ? ' ' : ''}';
+    final newText = '$before$insert$after';
     _controller.text = newText;
-    _controller.selection = TextSelection.collapsed(offset: newText.length);
+    final newCursor = cursorPos + insert.length;
+    _controller.selection = TextSelection.collapsed(offset: newCursor);
     _focusNode.requestFocus();
+  }
+
+  Future<void> _insertTag(String tag) async {
+    if (tag == '#when') {
+      final result = await _showWhenPicker();
+      if (result != null) {
+        _insertTagAtCursor(result);
+      }
+    } else {
+      _insertTagAtCursor(tag);
+    }
+  }
+
+  Future<String?> _showWhenPicker() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return null;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null || !mounted) return null;
+
+    final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute, 0);
+    return formatWhenTag(dt);
   }
 
   @override
@@ -1233,6 +1330,19 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 'Bunyan 🪓',
                 style: TextStyle(color: Colors.white, fontSize: 24),
               ),
+            ),
+            ListTile(
+              leading: Icon(Icons.calendar_month),
+              title: Text('Calendar'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CalendarScreen(entries: _entries),
+                  ),
+                );
+              },
             ),
             ListTile(
               leading: Icon(Icons.backup),
@@ -1374,7 +1484,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                                     return ListTile(
                                       dense: true,
                                       title: Text(suggestion),
-                                      onTap: () {
+                                      onTap: () async {
                                         final currentText = _controller.text;
                                         int tagStartIndex = currentText.length;
                                         for (int i = currentText.length - 1; i >= 0; i--) {
@@ -1390,7 +1500,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                                           0,
                                           tagStartIndex,
                                         );
-                                        _controller.text = '$textBeforeTag$suggestion ';
+
+                                        if (suggestion == '#when') {
+                                          final result = await _showWhenPicker();
+                                          if (result == null) return;
+                                          _controller.text = '$textBeforeTag$result ';
+                                        } else {
+                                          _controller.text = '$textBeforeTag$suggestion ';
+                                        }
 
                                         _controller.selection = TextSelection.collapsed(
                                           offset: _controller.text.length,

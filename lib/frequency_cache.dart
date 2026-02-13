@@ -104,7 +104,9 @@ class EntryFrequencyCache {
   }
 
   void _extractAndUpdateTags(String word, int delta) {
-    final words = word.split(' ');
+    // Collapse #when[...] to #when so bracket content doesn't fragment into tags
+    final collapsed = word.replaceAll(whenTagRegex, '#when');
+    final words = collapsed.split(' ');
     for (final w in words) {
       if (w.isNotEmpty && tagLeaders.contains(w[0])) {
         final currentCount = _tagCounts[w] ?? 0;

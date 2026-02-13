@@ -46,12 +46,31 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     super.dispose();
   }
 
+  Future<String?> _showWhenPicker() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return null;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null || !mounted) return null;
+
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute, 0);
+    return formatWhenTag(picked);
+  }
+
   Future<void> _selectDate() async {
     final date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
+      lastDate: DateTime(2100),
     );
 
     if (date == null) return;
@@ -230,7 +249,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                         return ListTile(
                           dense: true,
                           title: Text(suggestion),
-                          onTap: () {
+                          onTap: () async {
                             final currentText = _wordController.text;
                             int tagStartIndex = currentText.length;
                             for (int i = currentText.length - 1; i >= 0; i--) {
@@ -243,7 +262,14 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
                             }
 
                             final textBeforeTag = currentText.substring(0, tagStartIndex);
-                            _wordController.text = '$textBeforeTag$suggestion ';
+
+                            if (suggestion == '#when') {
+                              final result = await _showWhenPicker();
+                              if (result == null) return;
+                              _wordController.text = '$textBeforeTag$result ';
+                            } else {
+                              _wordController.text = '$textBeforeTag$suggestion ';
+                            }
 
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               _wordController.selection = TextSelection.collapsed(
