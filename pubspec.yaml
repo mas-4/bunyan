@@ -7,6 +7,7 @@ environment:
   sdk: ^3.8.1
 
 dependencies:
+  add_2_calendar: ^3.0.1
   confetti: ^0.7.0
   file_picker: ^10.2.0
   fl_chart: ^0.70.2

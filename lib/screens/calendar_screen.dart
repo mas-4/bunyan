@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:add_2_calendar/add_2_calendar.dart';
 
 import '../models.dart';
 import '../utils.dart';
@@ -349,6 +350,16 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
     );
   }
 
+  void _addToSystemCalendar(_CalendarEntry ce) {
+    final displayText = ce.entry.word.replaceAll(whenTagRegex, '').trim();
+    final event = Event(
+      title: displayText,
+      startDate: ce.calendarDate,
+      endDate: ce.calendarDate.add(const Duration(hours: 1)),
+    );
+    Add2Calendar.addEvent2Cal(event);
+  }
+
   Widget _buildCalendarEntryTile(_CalendarEntry ce) {
     final dt = DateTimeFormatter(ce.calendarDate);
     final displayText = ce.entry.word.replaceAll(whenTagRegex, '#when').trim();
@@ -358,6 +369,11 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       leading: ce.hasWhenTag
           ? Icon(Icons.event, size: 18, color: Theme.of(context).colorScheme.primary)
           : null,
+      trailing: IconButton(
+        icon: Icon(Icons.notification_add, size: 20),
+        tooltip: 'Add to system calendar',
+        onPressed: () => _addToSystemCalendar(ce),
+      ),
       dense: true,
     );
   }
