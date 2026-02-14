@@ -1558,7 +1558,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       ),
       drawer: Drawer(
         child: ListView(
-          padding: EdgeInsets.zero,
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 32),
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).primaryColor),
