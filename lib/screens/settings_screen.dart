@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 class SettingsScreen extends StatefulWidget {
   final int aroundNowWindow;
   final int relatedEntriesWindow;
-  final Function(int, int) onSave;
+  final int groupingWindow;
+  final Function(int, int, int) onSave;
 
   const SettingsScreen({
     super.key,
     required this.aroundNowWindow,
     required this.relatedEntriesWindow,
+    required this.groupingWindow,
     required this.onSave,
   });
 
@@ -19,14 +21,17 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late int _aroundNowWindow;
   late int _relatedEntriesWindow;
+  late int _groupingWindow;
 
   final List<int> _timeOptions = [5, 15, 30, 45, 60, 90, 120, 180, 240];
+  final List<int> _groupingOptions = [1, 2, 3, 5, 10, 15, 30, 60];
 
   @override
   void initState() {
     super.initState();
     _aroundNowWindow = widget.aroundNowWindow;
     _relatedEntriesWindow = widget.relatedEntriesWindow;
+    _groupingWindow = widget.groupingWindow;
   }
 
   String _formatMinutes(int minutes) {
@@ -49,7 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              widget.onSave(_aroundNowWindow, _relatedEntriesWindow);
+              widget.onSave(_aroundNowWindow, _relatedEntriesWindow, _groupingWindow);
               Navigator.pop(context);
             },
             child: Text('Save', style: TextStyle(color: Colors.blue)),
@@ -103,6 +108,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
               items: _timeOptions.map((minutes) {
+                return DropdownMenuItem(
+                  value: minutes,
+                  child: Text(_formatMinutes(minutes)),
+                );
+              }).toList(),
+            ),
+          ),
+          Divider(),
+          ListTile(
+            title: Text('Entry Grouping Window'),
+            subtitle: Text(
+              'Entries within ${_formatMinutes(_groupingWindow)} are grouped into collapsible cards',
+            ),
+            trailing: DropdownButton<int>(
+              value: _groupingWindow,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _groupingWindow = value;
+                  });
+                }
+              },
+              items: _groupingOptions.map((minutes) {
                 return DropdownMenuItem(
                   value: minutes,
                   child: Text(_formatMinutes(minutes)),

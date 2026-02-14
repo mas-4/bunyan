@@ -45,6 +45,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   int _aroundNowWindow = defaultAroundNowWindow;
   int _relatedEntriesWindow = defaultRelatedEntriesWindow;
+  int _groupingWindow = defaultGroupingWindow;
 
   bool _bulkEditMode = false;
   final Set<int> _selectedIndices = {};
@@ -52,6 +53,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
   // Centralized frequency cache for O(1) lookups
   final EntryFrequencyCache _cache = EntryFrequencyCache();
+
+  // Track which group keys are collapsed (key = first entry's timestamp ms)
+  // New groups default to collapsed via the build logic
+  final Set<int> _expandedGroups = {};
 
   // Generate 8-char hash from text + timestamp for todo tracking
   String _generateTodoHash(String text, DateTime timestamp) {
@@ -118,6 +123,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     setState(() {
       _aroundNowWindow = settings['aroundNow']!;
       _relatedEntriesWindow = settings['relatedEntries']!;
+      _groupingWindow = settings['groupingWindow']!;
     });
   }
 
@@ -435,6 +441,21 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
+  Widget _drawerSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, top: 16, bottom: 4),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey,
+          letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+
   Widget _buildEntry(WordEntry entry, int index) {
     final dt = DateTimeFormatter(entry.timestamp);
     final count = _cache.getWordCount(entry.word);
@@ -516,7 +537,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
 
     return _wrapPinned(entry, Dismissible(
-      key: Key('${entry.timestamp.millisecondsSinceEpoch}'),
+      key: Key('${entry.timestamp.millisecondsSinceEpoch}_${entry.word.hashCode}'),
       dismissThresholds: const {
         DismissDirection.endToStart: 0.9,
         DismissDirection.startToEnd: 0.9,
@@ -595,6 +616,180 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             : _enterBulkEditMode(entry),
       ),
     ));
+  }
+
+  /// Groups consecutive entries within the configured window of each other.
+  List<List<WordEntry>> _groupEntriesByTime(List<WordEntry> entries) {
+    if (entries.isEmpty) return [];
+    final thresholdMinutes = _groupingWindow;
+
+    final groups = <List<WordEntry>>[];
+    var currentGroup = <WordEntry>[entries.first];
+
+    for (int i = 1; i < entries.length; i++) {
+      final prev = currentGroup.last;
+      final curr = entries[i];
+      final diff = prev.timestamp.difference(curr.timestamp).inMinutes.abs();
+
+      if (diff <= thresholdMinutes) {
+        currentGroup.add(curr);
+      } else {
+        groups.add(currentGroup);
+        currentGroup = [curr];
+      }
+    }
+    groups.add(currentGroup);
+    return groups;
+  }
+
+  /// Stable key for a group based on its first entry's timestamp.
+  int _groupKey(List<WordEntry> group) =>
+      group.first.timestamp.millisecondsSinceEpoch;
+
+  Widget _buildEntryGroup(List<WordEntry> group, int groupIndex) {
+    final key = _groupKey(group);
+    final isCollapsed = !_expandedGroups.contains(key);
+    final first = group.first;
+    final last = group.last;
+    final dtFirst = DateTimeFormatter(first.timestamp);
+    final dtLast = DateTimeFormatter(last.timestamp);
+
+    // Time range: use the earlier time first
+    final earlierTime = first.timestamp.isBefore(last.timestamp)
+        ? dtFirst.time
+        : dtLast.time;
+    final laterTime = first.timestamp.isBefore(last.timestamp)
+        ? dtLast.time
+        : dtFirst.time;
+
+    final dateLabel = dtFirst.daysAgo;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                if (isCollapsed) {
+                  _expandedGroups.add(key);
+                } else {
+                  _expandedGroups.remove(key);
+                }
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$earlierTime – $laterTime',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${group.length} entries · $dateLabel',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey,
+                              ),
+                        ),
+                        if (isCollapsed) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            group.map((e) {
+                              final words = e.word.split(' ');
+                              return words.length > 2
+                                  ? '${words[0]} ${words[1]}…'
+                                  : e.word;
+                            }).join(', '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey.shade600,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isCollapsed ? Icons.expand_more : Icons.expand_less,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (!isCollapsed)
+            ...group.asMap().entries.map((mapEntry) {
+              return _buildEntry(mapEntry.value, mapEntry.key);
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupedListView() {
+    final groups = _groupEntriesByTime(_displayEntries);
+
+    // Build a flat list of widgets with day dividers inserted between groups
+    // Each item is either a 'divider' or a 'group'
+    final items = <_ListItem>[];
+    DateTime? lastDate;
+
+    for (int i = 0; i < groups.length; i++) {
+      final group = groups[i];
+      final groupDate = DateTime(
+        group.first.timestamp.year,
+        group.first.timestamp.month,
+        group.first.timestamp.day,
+      );
+
+      if (lastDate == null || groupDate != lastDate) {
+        items.add(_ListItem.divider(groupDate));
+        lastDate = groupDate;
+      }
+      items.add(_ListItem.group(group, i));
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item.isDivider) {
+          final dt = DateTimeFormatter(item.date!);
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    '${dt.weekDay} ${dt.date} · ${dt.daysAgo}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  ),
+                ),
+                Expanded(child: Divider()),
+              ],
+            ),
+          );
+        }
+
+        final group = item.entries!;
+        if (group.length == 1) {
+          return _buildEntry(group.first, item.groupIndex!);
+        }
+        return _buildEntryGroup(group, item.groupIndex!);
+      },
+    );
   }
 
   Future<void> _loadEntries() async {
@@ -1209,11 +1404,13 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         builder: (context) => SettingsScreen(
           aroundNowWindow: _aroundNowWindow,
           relatedEntriesWindow: _relatedEntriesWindow,
-          onSave: (aroundNow, relatedEntries) async {
-            await saveTimeSettings(aroundNow, relatedEntries);
+          groupingWindow: _groupingWindow,
+          onSave: (aroundNow, relatedEntries, groupingWindow) async {
+            await saveTimeSettings(aroundNow, relatedEntries, groupingWindow);
             setState(() {
               _aroundNowWindow = aroundNow;
               _relatedEntriesWindow = relatedEntries;
+              _groupingWindow = groupingWindow;
             });
           },
         ),
@@ -1370,6 +1567,8 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 style: TextStyle(color: Colors.white, fontSize: 24),
               ),
             ),
+            // --- Views ---
+            _drawerSectionHeader('Views'),
             ListTile(
               leading: Icon(Icons.calendar_month),
               title: Text('Calendar'),
@@ -1384,16 +1583,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.backup),
-              title: Text('Backups'),
+              leading: Icon(Icons.access_time),
+              title: Text('Time Suggestions'),
               onTap: () {
                 Navigator.pop(context);
-                _openBackupScreen();
+                _openTimeSuggestions();
               },
             ),
+            // --- Configuration ---
+            _drawerSectionHeader('Configuration'),
             ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Hotbar Settings'),
+              leading: Icon(Icons.dashboard_customize),
+              title: Text('Hotbar'),
               onTap: () {
                 Navigator.pop(context);
                 _openHotbarSettings();
@@ -1401,7 +1602,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ),
             ListTile(
               leading: Icon(Icons.label),
-              title: Text('Manage Tags'),
+              title: Text('Tags'),
               onTap: () {
                 Navigator.pop(context);
                 _openTagManager();
@@ -1415,22 +1616,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 _openSettings();
               },
             ),
-            ListTile(
-              leading: Icon(Icons.cloud_upload),
-              title: Text('Sync to Google Backup'),
-              subtitle: Text('Request backup before upgrading'),
-              onTap: () async {
-                Navigator.pop(context);
-                final ok = await requestGoogleBackup();
-                _showError(ok
-                    ? 'Backup requested — Android will sync shortly'
-                    : 'Not available on this platform');
-              },
-            ),
-            Divider(),
+            // --- Data ---
+            _drawerSectionHeader('Data'),
             ListTile(
               leading: Icon(Icons.file_download),
-              title: Text('Import Data'),
+              title: Text('Import'),
               onTap: () {
                 Navigator.pop(context);
                 _importData();
@@ -1438,10 +1628,30 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ),
             ListTile(
               leading: Icon(Icons.share),
-              title: Text('Export Data'),
+              title: Text('Export'),
               onTap: () {
                 Navigator.pop(context);
                 _exportData();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.backup),
+              title: Text('Backups'),
+              onTap: () {
+                Navigator.pop(context);
+                _openBackupScreen();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.cloud_upload),
+              title: Text('Google Backup'),
+              subtitle: Text('Request sync before upgrading'),
+              onTap: () async {
+                Navigator.pop(context);
+                final ok = await requestGoogleBackup();
+                _showError(ok
+                    ? 'Backup requested — Android will sync shortly'
+                    : 'Not available on this platform');
               },
             ),
             Divider(),
@@ -1603,14 +1813,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   )
-                : ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _displayEntries.length,
-                    itemBuilder: (context, index) {
-                      final entry = _displayEntries[index];
-                      return _buildEntry(entry, index);
-                    },
-                  ),
+                : _buildGroupedListView(),
           ),
         ],
       ),
@@ -1639,4 +1842,24 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   ],
 );
   }
+}
+
+/// Helper for the grouped list view to hold either a day divider or entry group.
+class _ListItem {
+  final bool isDivider;
+  final DateTime? date;
+  final List<WordEntry>? entries;
+  final int? groupIndex;
+
+  _ListItem.divider(DateTime d)
+      : isDivider = true,
+        date = d,
+        entries = null,
+        groupIndex = null;
+
+  _ListItem.group(List<WordEntry> e, int idx)
+      : isDivider = false,
+        date = null,
+        entries = e,
+        groupIndex = idx;
 }

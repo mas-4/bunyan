@@ -54,6 +54,7 @@ List<DateTime> extractWhenDates(String text) {
 // Default time windows in minutes
 const int defaultAroundNowWindow = 60;
 const int defaultRelatedEntriesWindow = 30;
+const int defaultGroupingWindow = 5;
 
 Future<File> _getSettingsFile() async {
   final directory = await getApplicationDocumentsDirectory();
@@ -76,6 +77,7 @@ Future<Map<String, int>> loadTimeSettings() async {
       return {
         'aroundNow': settings['aroundNow'] ?? defaultAroundNowWindow,
         'relatedEntries': settings['relatedEntries'] ?? defaultRelatedEntriesWindow,
+        'groupingWindow': settings['groupingWindow'] ?? defaultGroupingWindow,
       };
     }
   } catch (e) {
@@ -84,13 +86,15 @@ Future<Map<String, int>> loadTimeSettings() async {
   return {
     'aroundNow': defaultAroundNowWindow,
     'relatedEntries': defaultRelatedEntriesWindow,
+    'groupingWindow': defaultGroupingWindow,
   };
 }
 
-Future<void> saveTimeSettings(int aroundNow, int relatedEntries) async {
+Future<void> saveTimeSettings(int aroundNow, int relatedEntries, [int? groupingWindow]) async {
   try {
     final file = await _getSettingsFile();
-    await file.writeAsString('aroundNow=$aroundNow\nrelatedEntries=$relatedEntries');
+    final gw = groupingWindow ?? defaultGroupingWindow;
+    await file.writeAsString('aroundNow=$aroundNow\nrelatedEntries=$relatedEntries\ngroupingWindow=$gw');
   } catch (e) {
     // Silently fail
   }
