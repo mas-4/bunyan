@@ -82,6 +82,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     return _cache.isDoneHash(hash);
   }
 
+  // Check if entry is a #done entry
+  bool _isDoneEntry(WordEntry entry) {
+    return entry.word.toLowerCase().contains('#done');
+  }
+
   // Check if entry is pinned
   bool _isPinned(WordEntry entry) {
     return entry.word.toLowerCase().contains('#pin');
@@ -132,9 +137,17 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final pos = _scrollController.position;
     if (pos.userScrollDirection == ScrollDirection.reverse && !_collapseInput) {
       setState(() => _collapseInput = true);
-    } else if (pos.userScrollDirection == ScrollDirection.forward && _collapseInput) {
+    } else if (_collapseInput && pos.pixels <= 0) {
       setState(() => _collapseInput = false);
     }
+  }
+
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _checkDailyBackup() async {
@@ -808,7 +821,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
         setState(() {
           _entries = entries;
-          _displayEntries = _withPinnedFirst(List.from(entries));
+          _displayEntries = _withPinnedFirst(
+            entries.where((e) => !_isDoneEntry(e)).toList(),
+          );
           _isLoading = false;
         });
       } else {
@@ -870,12 +885,15 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
         // Filter entries by the full search text, not just the tag
         // Also hide completed todos when filtering by #todo
-        final isFilteringForTodo = trimmedText.toLowerCase().contains('#todo');
+        final lowerTrimmed = trimmedText.toLowerCase();
+        final isFilteringForTodo = lowerTrimmed.contains('#todo');
+        final isFilteringForDone = lowerTrimmed.contains('#done');
         final matchingEntries = _entries.where((entry) {
-          final matches = entry.word.toLowerCase().contains(trimmedText.toLowerCase());
+          final matches = entry.word.toLowerCase().contains(lowerTrimmed);
           if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
             return false;
           }
+          if (!isFilteringForDone && _isDoneEntry(entry)) return false;
           return matches;
         }).toList();
 
@@ -891,7 +909,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     if (text.isEmpty) {
       setState(() {
-        _displayEntries = _withPinnedFirst(List.from(_entries));
+        _displayEntries = _withPinnedFirst(
+          _entries.where((e) => !_isDoneEntry(e)).toList(),
+        );
         _showSuggestions = false;
         _showAllMatches = false;
         _hasSearchText = false;
@@ -899,13 +919,16 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       return;
     }
 
-    // Hide completed todos when filtering by #todo
-    final isFilteringForTodo = text.toLowerCase().contains('#todo');
+    // Hide completed todos when filtering by #todo, hide #done unless searching for it
+    final lowerText = text.toLowerCase();
+    final isFilteringForTodo = lowerText.contains('#todo');
+    final isFilteringForDone = lowerText.contains('#done');
     final matchingEntries = _entries.where((entry) {
-      final matches = entry.word.toLowerCase().contains(text.toLowerCase());
+      final matches = entry.word.toLowerCase().contains(lowerText);
       if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
         return false;
       }
+      if (!isFilteringForDone && _isDoneEntry(entry)) return false;
       return matches;
     }).toList();
 
@@ -1332,7 +1355,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       MaterialPageRoute(
         builder: (context) => TimeSuggestionsScreen(
           entries: _entries,
-          onAddEntry: _addEntry,
+          onAddEntry: (word) => _addEntry(word, clearController: false),
           windowMinutes: _aroundNowWindow,
         ),
       ),
@@ -1550,6 +1573,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               ]
             : [
                 IconButton(
+                  icon: Icon(Icons.calendar_month),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CalendarScreen(entries: _entries),
+                      ),
+                    );
+                  },
+                  tooltip: 'Calendar',
+                ),
+                IconButton(
                   icon: Icon(Icons.access_time),
                   onPressed: _openTimeSuggestions,
                   tooltip: 'Time Suggestions',
@@ -1566,29 +1601,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 'Bunyan 🪓',
                 style: TextStyle(color: Colors.white, fontSize: 24),
               ),
-            ),
-            // --- Views ---
-            _drawerSectionHeader('Views'),
-            ListTile(
-              leading: Icon(Icons.calendar_month),
-              title: Text('Calendar'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CalendarScreen(entries: _entries),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text('Time Suggestions'),
-              onTap: () {
-                Navigator.pop(context);
-                _openTimeSuggestions();
-              },
             ),
             // --- Configuration ---
             _drawerSectionHeader('Configuration'),
@@ -1642,18 +1654,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                 _openBackupScreen();
               },
             ),
-            ListTile(
-              leading: Icon(Icons.cloud_upload),
-              title: Text('Google Backup'),
-              subtitle: Text('Request sync before upgrading'),
-              onTap: () async {
-                Navigator.pop(context);
-                final ok = await requestGoogleBackup();
-                _showError(ok
-                    ? 'Backup requested — Android will sync shortly'
-                    : 'Not available on this platform');
-              },
-            ),
             Divider(),
             ListTile(
               leading: Icon(Icons.delete_forever, color: Colors.red),
@@ -1666,6 +1666,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           ],
         ),
       ),
+      floatingActionButton: _collapseInput
+          ? FloatingActionButton.small(
+              onPressed: _scrollToTop,
+              child: Icon(Icons.arrow_upward),
+            )
+          : null,
       body: Column(
         children: [
           AnimatedSize(
@@ -1813,7 +1819,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   )
-                : _buildGroupedListView(),
+                : _hasSearchText
+                    ? ListView.builder(
+                        controller: _scrollController,
+                        itemCount: _displayEntries.length,
+                        itemBuilder: (context, index) =>
+                            _buildEntry(_displayEntries[index], index),
+                      )
+                    : _buildGroupedListView(),
           ),
         ],
       ),

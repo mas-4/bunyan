@@ -100,12 +100,13 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
           tabs: const [
             Tab(text: 'Month'),
             Tab(text: 'Day'),
-            Tab(text: 'All Events'),
+            Tab(text: 'Upcoming'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
+        physics: const NeverScrollableScrollPhysics(),
         children: [
           _buildMonthTab(),
           _buildDayTab(),
@@ -131,7 +132,17 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       'July', 'August', 'September', 'October', 'November', 'December',
     ];
 
-    return Column(
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity != null) {
+          if (details.primaryVelocity! < 0) {
+            _nextMonth();
+          } else if (details.primaryVelocity! > 0) {
+            _prevMonth();
+          }
+        }
+      },
+      child: Column(
       children: [
         // Month header
         Padding(
@@ -235,78 +246,106 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
         ),
         Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
       ],
+    ),
     );
   }
 
   // --- Day Tab ---
+  void _prevDay() {
+    setState(() {
+      _selectedDay = _selectedDay.subtract(const Duration(days: 1));
+      _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
+    });
+  }
+
+  void _nextDay() {
+    setState(() {
+      _selectedDay = _selectedDay.add(const Duration(days: 1));
+      _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
+    });
+  }
+
   Widget _buildDayTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () {
-                  setState(() {
-                    _selectedDay = _selectedDay.subtract(const Duration(days: 1));
-                    _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
-                  });
-                },
-              ),
-              GestureDetector(
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDay,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    setState(() {
-                      _selectedDay = picked;
-                      _selectedMonth = DateTime(picked.year, picked.month);
-                    });
-                  }
-                },
-                child: Text(
-                  _formatDayHeader(_selectedDay),
-                  style: Theme.of(context).textTheme.titleMedium,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity != null) {
+          if (details.primaryVelocity! < 0) {
+            _nextDay();
+          } else if (details.primaryVelocity! > 0) {
+            _prevDay();
+          }
+        }
+      },
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _prevDay,
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () {
-                  setState(() {
-                    _selectedDay = _selectedDay.add(const Duration(days: 1));
-                    _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
-                  });
-                },
-              ),
-            ],
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDay,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _selectedDay = picked;
+                        _selectedMonth = DateTime(picked.year, picked.month);
+                      });
+                    }
+                  },
+                  child: Text(
+                    _formatDayHeader(_selectedDay),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _nextDay,
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
-      ],
+          Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
+        ],
+      ),
     );
   }
 
-  // --- All Events Tab ---
+  // --- Upcoming Events Tab ---
   Widget _buildAllEventsTab() {
-    if (_calendarEntries.isEmpty) {
-      return const Center(child: Text('No entries found'));
+    final now = DateTime.now();
+
+    // Only show #when entries whose calendar date is in the future
+    final upcomingByDate = <String, List<_CalendarEntry>>{};
+    for (final ce in _calendarEntries) {
+      if (!ce.hasWhenTag) continue;
+      if (ce.calendarDate.isBefore(now)) continue;
+      final key = _dateKey(ce.calendarDate);
+      upcomingByDate.putIfAbsent(key, () => []);
+      upcomingByDate[key]!.add(ce);
     }
 
-    // Group by date
-    final sortedKeys = _entriesByDate.keys.toList()..sort();
+    final sortedKeys = upcomingByDate.keys.toList()..sort();
+
+    if (sortedKeys.isEmpty) {
+      return const Center(child: Text('No upcoming events'));
+    }
 
     return ListView.builder(
       itemCount: sortedKeys.length,
       itemBuilder: (context, index) {
         final key = sortedKeys[index];
-        final entries = _entriesByDate[key]!;
+        final entries = upcomingByDate[key]!;
         final parts = key.split('-');
         final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
 

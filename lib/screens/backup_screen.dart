@@ -145,6 +145,23 @@ class _BackupScreenState extends State<BackupScreen> {
                     ),
                   ),
                 ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  child: OutlinedButton.icon(
+                    icon: Icon(Icons.cloud_upload),
+                    label: Text('Google Backup'),
+                    onPressed: () async {
+                      final ok = await requestGoogleBackup();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(ok
+                              ? 'Backup requested — Android will sync shortly'
+                              : 'Not available on this platform')),
+                        );
+                      }
+                    },
+                  ),
+                ),
                 Divider(),
                 Expanded(
                   child: _backups.isEmpty

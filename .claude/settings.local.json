@@ -3,7 +3,8 @@
     "allow": [
       "Bash(flutter analyze:*)",
       "Bash(flutter pub get:*)",
-      "Bash(flutter pub add:*)"
+      "Bash(flutter pub add:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
