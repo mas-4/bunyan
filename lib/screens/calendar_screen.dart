@@ -361,7 +361,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                     ),
               ),
             ),
-            ...entries.map((ce) => _buildCalendarEntryTile(ce)),
+            ...entries.map((ce) => _buildCalendarEntryTile(ce, hideWhenTag: true)),
             if (index < sortedKeys.length - 1) const Divider(),
           ],
         );
@@ -399,9 +399,11 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
     Add2Calendar.addEvent2Cal(event);
   }
 
-  Widget _buildCalendarEntryTile(_CalendarEntry ce) {
+  Widget _buildCalendarEntryTile(_CalendarEntry ce, {bool hideWhenTag = false}) {
     final dt = DateTimeFormatter(ce.calendarDate);
-    final displayText = ce.entry.word.replaceAll(whenTagRegex, '#when').trim();
+    final displayText = hideWhenTag
+        ? ce.entry.word.replaceAll(whenTagRegex, '').trim()
+        : ce.entry.word.replaceAll(whenTagRegex, '#when').trim();
     return ListTile(
       title: Text(displayText),
       subtitle: Text(dt.time),

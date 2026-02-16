@@ -659,6 +659,86 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   int _groupKey(List<WordEntry> group) =>
       group.first.timestamp.millisecondsSinceEpoch;
 
+  void _selectGroupEntries(List<WordEntry> group) {
+    setState(() {
+      _bulkEditMode = true;
+      for (final entry in group) {
+        final actualIndex = _entries.indexOf(entry);
+        if (actualIndex != -1) {
+          _selectedIndices.add(actualIndex);
+        }
+      }
+    });
+  }
+
+  Future<void> _deleteGroup(List<WordEntry> group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Group'),
+        content: Text('Delete all ${group.length} entries in this group?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      for (final entry in group) {
+        final actualIndex = _entries.indexWhere(
+          (e) => e.timestamp == entry.timestamp && e.word == entry.word,
+        );
+        if (actualIndex != -1) {
+          _cache.removeEntry(entry);
+          _entries.removeAt(actualIndex);
+        }
+      }
+
+      setState(() {
+        _displayEntries = _withPinnedFirst(
+          _entries.where((e) => !_isDoneEntry(e)).toList(),
+        );
+        _filterEntries();
+      });
+
+      final file = await getFile();
+      final csvContent = _entries.reversed
+          .map((entry) => entry.toCsv())
+          .join('\n');
+
+      if (csvContent.isNotEmpty) {
+        await file.writeAsString('$csvContent\n');
+      } else {
+        await file.writeAsString('');
+      }
+
+      _showError('${group.length} entries deleted');
+    } catch (e) {
+      _showError('Error deleting group: $e');
+    }
+  }
+
+  Future<void> _copyGroup(List<WordEntry> group) async {
+    try {
+      for (final entry in group) {
+        await _addEntry(entry.word, clearController: false);
+      }
+      _showError('${group.length} entries added');
+    } catch (e) {
+      _showError('Error copying group: $e');
+    }
+  }
+
   Widget _buildEntryGroup(List<WordEntry> group, int groupIndex) {
     final key = _groupKey(group);
     final isCollapsed = !_expandedGroups.contains(key);
@@ -677,71 +757,100 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
     final dateLabel = dtFirst.daysAgo;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                if (isCollapsed) {
-                  _expandedGroups.add(key);
-                } else {
-                  _expandedGroups.remove(key);
-                }
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$earlierTime – $laterTime',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${group.length} entries · $dateLabel',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey,
-                              ),
-                        ),
-                        if (isCollapsed) ...[
-                          const SizedBox(height: 4),
+    return Dismissible(
+      key: Key('group_${first.timestamp.millisecondsSinceEpoch}_${last.timestamp.millisecondsSinceEpoch}'),
+      dismissThresholds: const {
+        DismissDirection.endToStart: 0.9,
+        DismissDirection.startToEnd: 0.9,
+      },
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.endToStart) {
+          await _deleteGroup(group);
+          return false; // We handle deletion ourselves
+        } else {
+          await _copyGroup(group);
+          return false; // We handle copying ourselves
+        }
+      },
+      background: Container(
+        color: Colors.green,
+        alignment: Alignment.centerLeft,
+        padding: EdgeInsets.only(left: 20),
+        child: Icon(Icons.add, color: Colors.white),
+      ),
+      secondaryBackground: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: 20),
+        child: Icon(Icons.delete, color: Colors.white),
+      ),
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          children: [
+            InkWell(
+              onTap: () {
+                setState(() {
+                  if (isCollapsed) {
+                    _expandedGroups.add(key);
+                  } else {
+                    _expandedGroups.remove(key);
+                  }
+                });
+              },
+              onLongPress: () => _selectGroupEntries(group),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            group.map((e) {
-                              final words = e.word.split(' ');
-                              return words.length > 2
-                                  ? '${words[0]} ${words[1]}…'
-                                  : e.word;
-                            }).join(', '),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            '$earlierTime – $laterTime',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${group.length} entries · $dateLabel',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.grey.shade600,
+                                  color: Colors.grey,
                                 ),
                           ),
+                          if (isCollapsed) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              group.map((e) {
+                                final words = e.word.split(' ');
+                                return words.length > 2
+                                    ? '${words[0]} ${words[1]}…'
+                                    : e.word;
+                              }).join(', '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey.shade600,
+                                  ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  Icon(
-                    isCollapsed ? Icons.expand_more : Icons.expand_less,
-                    color: Colors.grey,
-                  ),
-                ],
+                    Icon(
+                      isCollapsed ? Icons.expand_more : Icons.expand_less,
+                      color: Colors.grey,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (!isCollapsed)
-            ...group.asMap().entries.map((mapEntry) {
-              return _buildEntry(mapEntry.value, mapEntry.key);
-            }),
-        ],
+            if (!isCollapsed)
+              ...group.asMap().entries.map((mapEntry) {
+                return _buildEntry(mapEntry.value, mapEntry.key);
+              }),
+          ],
+        ),
       ),
     );
   }
