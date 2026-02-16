@@ -151,14 +151,14 @@ class _BackupScreenState extends State<BackupScreen> {
                     icon: Icon(Icons.cloud_upload),
                     label: Text('Google Backup'),
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       final ok = await requestGoogleBackup();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(ok
-                              ? 'Backup requested — Android will sync shortly'
-                              : 'Not available on this platform')),
-                        );
-                      }
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(ok
+                            ? 'Backup requested — Android will sync shortly'
+                            : 'Not available on this platform')),
+                      );
                     },
                   ),
                 ),

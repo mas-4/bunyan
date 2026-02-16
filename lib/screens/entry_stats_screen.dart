@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../utils.dart';
 
 class EntryStatsScreen extends StatelessWidget {
   final String entryWord;
@@ -240,9 +241,25 @@ class EntryStatsScreen extends StatelessWidget {
     final weeklyTrend = _getWeeklyTrend(entries);
     final weeklyHeatmap = _getWeeklyHeatmap(entries);
 
+    final contentHash = generateContentHash(entryWord);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(entryWord),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(20),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              contentHash,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Colors.grey.shade400,
+              ),
+            ),
+          ),
+        ),
       ),
       body: entries.isEmpty
           ? Center(child: Text('No entries found'))

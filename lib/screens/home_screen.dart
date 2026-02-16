@@ -19,6 +19,8 @@ import 'time_suggestions_screen.dart';
 import 'settings_screen.dart';
 import 'tag_manager_screen.dart';
 import 'calendar_screen.dart';
+import 'habit_screen.dart';
+import 'help_screen.dart';
 
 class WordLoggerHome extends StatefulWidget {
   const WordLoggerHome({super.key});
@@ -473,6 +475,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final dt = DateTimeFormatter(entry.timestamp);
     final count = _cache.getWordCount(entry.word);
     final pinned = _isPinned(entry);
+    final hash = generateContentHash(entry.word);
 
     if (_bulkEditMode) {
       final actualIndex = _entries.indexOf(entry);
@@ -498,7 +501,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           ],
         ),
         title: Text(entry.word),
-        subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
+        subtitle: Text('${dt.time} · $hash'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -606,7 +609,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               ? TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
               : null,
         ),
-        subtitle: Text('${dt.weekDay} ${dt.date} ${dt.time}'),
+        subtitle: Text('${dt.time} · $hash'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1077,6 +1080,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         !suggestions.contains('#when')) {
       return ['#when', ...suggestions];
     }
+    // Always offer @habit as a built-in suggestion when typing @h...
+    if (tagChar == '@' &&
+        '@habit'.startsWith(partialTag.toLowerCase()) &&
+        !suggestions.contains('@habit')) {
+      return ['@habit', ...suggestions];
+    }
     return suggestions;
   }
 
@@ -1471,6 +1480,24 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
+  void _openHabits() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HabitScreen(
+          entries: _entries,
+          cache: _cache,
+          onAddEntry: (word) async {
+            await _addEntry(word, clearController: false);
+          },
+          onDeleteEntry: (entry) async {
+            await _deleteEntry(entry);
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _openTagManager() async {
     final tagsByFrequency = _getTagsSortedByFrequency();
     final result = await Navigator.push<Map<String, String>>(
@@ -1694,9 +1721,26 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   tooltip: 'Calendar',
                 ),
                 IconButton(
+                  icon: Icon(Icons.loop),
+                  onPressed: _openHabits,
+                  tooltip: 'Habits',
+                ),
+                IconButton(
                   icon: Icon(Icons.access_time),
                   onPressed: _openTimeSuggestions,
                   tooltip: 'Time Suggestions',
+                ),
+                IconButton(
+                  icon: Icon(Icons.help_outline),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HelpScreen(),
+                      ),
+                    );
+                  },
+                  tooltip: 'Help',
                 ),
               ],
       ),

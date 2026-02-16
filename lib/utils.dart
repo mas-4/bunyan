@@ -1,9 +1,436 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 const String tagLeaders = '!@#^&~+=\\|';
 const int maxBackups = 5;
+
+// ---------------------------------------------------------------------------
+// Habit DSL
+// ---------------------------------------------------------------------------
+
+/// Matches `@habit[...]` (with spec) or bare `@habit` (discontinued).
+final RegExp habitTagRegex = RegExp(r'@habit(?:\[[^\]]*\])?');
+
+/// Returns true when the entry text contains an @habit tag.
+bool isHabitEntry(String text) => habitTagRegex.hasMatch(text);
+
+/// Strips the `@habit[...]` or `@habit` tag from text and trims.
+String extractHabitContent(String text) {
+  return text.replaceAll(habitTagRegex, '').trim();
+}
+
+/// Generates a stable 4-char hex hash from the "core content" of an entry.
+/// Core content = text with `@habit[...]` stripped.
+String generateContentHash(String text) {
+  final core = extractHabitContent(text);
+  final bytes = utf8.encode(core.toLowerCase());
+  int hash = 0;
+  for (final byte in bytes) {
+    hash = ((hash << 5) - hash) + byte;
+    hash = hash & 0x7FFFFFFF;
+  }
+  return hash.toRadixString(16).padLeft(4, '0').substring(0, 4);
+}
+
+/// Parse the `@habit[SPEC]` portion of a tag into a [HabitSpec].
+/// Returns `null` when the tag is not a valid habit tag.
+HabitSpec? parseHabitSpec(String text) {
+  // Bare @habit (no brackets) → discontinued
+  final bareMatch = RegExp(r'@habit(?!\[)').firstMatch(text);
+  if (bareMatch != null && !text.contains('@habit[')) {
+    return DiscontinuedHabitSpec();
+  }
+
+  final specMatch = RegExp(r'@habit\[([^\]]*)\]').firstMatch(text);
+  if (specMatch == null) return null;
+  final spec = specMatch.group(1)!.trim();
+  if (spec.isEmpty) return DiscontinuedHabitSpec();
+
+  // Dependency: after N HASH
+  final depMatch = RegExp(r'^after\s+(\d+)\s+([a-f0-9]{4})$', caseSensitive: false).firstMatch(spec);
+  if (depMatch != null) {
+    return DependencyHabitSpec(
+      requiredCount: int.parse(depMatch.group(1)!),
+      dependencyHash: depMatch.group(2)!.toLowerCase(),
+    );
+  }
+
+  // Sliding window: N in Md/Mw
+  final slidingMatch = RegExp(r'^(\d+)\s+in\s+(\d+)([dwmy])$', caseSensitive: false).firstMatch(spec);
+  if (slidingMatch != null) {
+    return SlidingWindowHabitSpec(
+      count: int.parse(slidingMatch.group(1)!),
+      windowSize: int.parse(slidingMatch.group(2)!),
+      windowUnit: slidingMatch.group(3)!.toLowerCase(),
+    );
+  }
+
+  // Frequency: N/d, N/w, N/m, N/y
+  final freqMatch = RegExp(r'^(\d+)/([dwmy])$', caseSensitive: false).firstMatch(spec);
+  if (freqMatch != null) {
+    return FrequencyHabitSpec(
+      count: int.parse(freqMatch.group(1)!),
+      periodUnit: freqMatch.group(2)!.toLowerCase(),
+    );
+  }
+
+  // Interval: Nd, Nw, Nm, Ny
+  final intervalMatch = RegExp(r'^(\d+)([dwmy])$', caseSensitive: false).firstMatch(spec);
+  if (intervalMatch != null) {
+    return IntervalHabitSpec(
+      interval: int.parse(intervalMatch.group(1)!),
+      unit: intervalMatch.group(2)!.toLowerCase(),
+    );
+  }
+
+  // Calendar: every monday/tuesday/...
+  final weekdayMatch = RegExp(r'^every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$', caseSensitive: false).firstMatch(spec);
+  if (weekdayMatch != null) {
+    return WeekdayHabitSpec(dayName: weekdayMatch.group(1)!.toLowerCase());
+  }
+
+  // Calendar: every march/april/...
+  final monthlyMatch = RegExp(r'^every\s+(january|february|march|april|may|june|july|august|september|october|november|december)$', caseSensitive: false).firstMatch(spec);
+  if (monthlyMatch != null) {
+    return YearlyMonthHabitSpec(monthName: monthlyMatch.group(1)!.toLowerCase());
+  }
+
+  // Calendar: march 13th (yearly date)
+  final yearlyDateMatch = RegExp(r'^(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)$', caseSensitive: false).firstMatch(spec);
+  if (yearlyDateMatch != null) {
+    return YearlyDateHabitSpec(
+      monthName: yearlyDateMatch.group(1)!.toLowerCase(),
+      day: int.parse(yearlyDateMatch.group(2)!),
+    );
+  }
+
+  // Calendar: 13th (monthly date)
+  final monthlyDateMatch = RegExp(r'^(\d{1,2})(?:st|nd|rd|th)$', caseSensitive: false).firstMatch(spec);
+  if (monthlyDateMatch != null) {
+    return MonthlyDateHabitSpec(day: int.parse(monthlyDateMatch.group(1)!));
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// HabitSpec abstract class & subclasses
+// ---------------------------------------------------------------------------
+
+abstract class HabitSpec {
+  /// Whether the habit is due on [day] given prior [completions].
+  bool isDueOnDay(DateTime day, List<DateTime> completions);
+
+  /// How many completions are required on [day].
+  int requiredOnDay(DateTime day, List<DateTime> completions);
+
+  /// How many of the [completions] count toward [day].
+  int completedOnDay(DateTime day, List<DateTime> completions);
+
+  /// Short label for display, e.g. "every 2d", "3/w".
+  String get displayLabel;
+}
+
+DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+class IntervalHabitSpec extends HabitSpec {
+  final int interval;
+  final String unit; // d, w, m, y
+
+  IntervalHabitSpec({required this.interval, required this.unit});
+
+  int get _intervalDays {
+    switch (unit) {
+      case 'w': return interval * 7;
+      case 'm': return interval * 30;
+      case 'y': return interval * 365;
+      default: return interval;
+    }
+  }
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    if (completions.isEmpty) return true;
+    final sorted = List<DateTime>.from(completions)..sort();
+    final lastCompletion = _startOfDay(sorted.last);
+    final diff = dayStart.difference(lastCompletion).inDays;
+    return diff >= _intervalDays;
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => isDueOnDay(day, completions) ? 1 : 0;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  /// Whether [day] is covered by a completion within the interval.
+  bool isCoveredOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    for (final c in completions) {
+      final cDay = _startOfDay(c);
+      final diff = dayStart.difference(cDay).inDays;
+      if (diff >= 0 && diff < _intervalDays) return true;
+    }
+    return false;
+  }
+
+  @override
+  String get displayLabel => 'every $interval$unit';
+}
+
+class FrequencyHabitSpec extends HabitSpec {
+  final int count;
+  final String periodUnit; // d, w, m, y
+
+  FrequencyHabitSpec({required this.count, required this.periodUnit});
+
+  ({DateTime start, DateTime end}) _periodBounds(DateTime day) {
+    final dayStart = _startOfDay(day);
+    switch (periodUnit) {
+      case 'w':
+        final weekStart = dayStart.subtract(Duration(days: dayStart.weekday - 1));
+        return (start: weekStart, end: weekStart.add(Duration(days: 7)));
+      case 'm':
+        final monthStart = DateTime(dayStart.year, dayStart.month, 1);
+        final monthEnd = DateTime(dayStart.year, dayStart.month + 1, 1);
+        return (start: monthStart, end: monthEnd);
+      case 'y':
+        return (start: DateTime(dayStart.year, 1, 1), end: DateTime(dayStart.year + 1, 1, 1));
+      default: // d
+        return (start: dayStart, end: dayStart.add(Duration(days: 1)));
+    }
+  }
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    final bounds = _periodBounds(day);
+    final countInPeriod = completions.where((c) =>
+      !c.isBefore(bounds.start) && c.isBefore(bounds.end)).length;
+    return countInPeriod < count;
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => count;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => '$count/$periodUnit';
+}
+
+class SlidingWindowHabitSpec extends HabitSpec {
+  final int count;
+  final int windowSize;
+  final String windowUnit; // d, w, m, y
+
+  SlidingWindowHabitSpec({required this.count, required this.windowSize, required this.windowUnit});
+
+  int get _windowDays {
+    switch (windowUnit) {
+      case 'w': return windowSize * 7;
+      case 'm': return windowSize * 30;
+      case 'y': return windowSize * 365;
+      default: return windowSize;
+    }
+  }
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    final windowStart = dayStart.subtract(Duration(days: _windowDays - 1));
+    final countInWindow = completions.where((c) {
+      final cd = _startOfDay(c);
+      return !cd.isBefore(windowStart) && !cd.isAfter(dayStart);
+    }).length;
+    return countInWindow < count;
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => count;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => '$count in $windowSize$windowUnit';
+}
+
+class WeekdayHabitSpec extends HabitSpec {
+  final String dayName;
+
+  WeekdayHabitSpec({required this.dayName});
+
+  static const _dayMap = {
+    'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
+    'friday': 5, 'saturday': 6, 'sunday': 7,
+  };
+
+  int get _weekday => _dayMap[dayName] ?? 1;
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    if (day.weekday != _weekday) return false;
+    final dayStart = _startOfDay(day);
+    return !completions.any((c) => _startOfDay(c) == dayStart);
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => day.weekday == _weekday ? 1 : 0;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'every ${dayName.substring(0, 3)}';
+}
+
+class MonthlyDateHabitSpec extends HabitSpec {
+  final int day;
+
+  MonthlyDateHabitSpec({required this.day});
+
+  @override
+  bool isDueOnDay(DateTime date, List<DateTime> completions) {
+    if (date.day != day) return false;
+    final dayStart = _startOfDay(date);
+    return !completions.any((c) => _startOfDay(c) == dayStart);
+  }
+
+  @override
+  int requiredOnDay(DateTime date, List<DateTime> completions) => date.day == day ? 1 : 0;
+
+  @override
+  int completedOnDay(DateTime date, List<DateTime> completions) {
+    final dayStart = _startOfDay(date);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => '${day}th';
+}
+
+class YearlyDateHabitSpec extends HabitSpec {
+  final String monthName;
+  final int day;
+
+  YearlyDateHabitSpec({required this.monthName, required this.day});
+
+  static const _monthMap = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4,
+    'may': 5, 'june': 6, 'july': 7, 'august': 8,
+    'september': 9, 'october': 10, 'november': 11, 'december': 12,
+  };
+
+  int get _month => _monthMap[monthName] ?? 1;
+
+  @override
+  bool isDueOnDay(DateTime date, List<DateTime> completions) {
+    if (date.month != _month || date.day != day) return false;
+    final dayStart = _startOfDay(date);
+    return !completions.any((c) => _startOfDay(c) == dayStart);
+  }
+
+  @override
+  int requiredOnDay(DateTime date, List<DateTime> completions) =>
+    (date.month == _month && date.day == day) ? 1 : 0;
+
+  @override
+  int completedOnDay(DateTime date, List<DateTime> completions) {
+    final dayStart = _startOfDay(date);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => '${monthName.substring(0, 3)} $day';
+}
+
+class YearlyMonthHabitSpec extends HabitSpec {
+  final String monthName;
+
+  YearlyMonthHabitSpec({required this.monthName});
+
+  static const _monthMap = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4,
+    'may': 5, 'june': 6, 'july': 7, 'august': 8,
+    'september': 9, 'october': 10, 'november': 11, 'december': 12,
+  };
+
+  int get _month => _monthMap[monthName] ?? 1;
+
+  @override
+  bool isDueOnDay(DateTime date, List<DateTime> completions) {
+    if (date.month != _month) return false;
+    // Due if no completion this year in this month
+    return !completions.any((c) => c.year == date.year && c.month == _month);
+  }
+
+  @override
+  int requiredOnDay(DateTime date, List<DateTime> completions) => date.month == _month ? 1 : 0;
+
+  @override
+  int completedOnDay(DateTime date, List<DateTime> completions) {
+    final dayStart = _startOfDay(date);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'every ${monthName.substring(0, 3)}';
+}
+
+class DependencyHabitSpec extends HabitSpec {
+  final int requiredCount;
+  final String dependencyHash;
+
+  DependencyHabitSpec({required this.requiredCount, required this.dependencyHash});
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    // Actual dependency check requires external data; default true
+    return true;
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => 1;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'after $requiredCount $dependencyHash';
+}
+
+class DiscontinuedHabitSpec extends HabitSpec {
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) => false;
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => 0;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) => 0;
+
+  @override
+  String get displayLabel => 'ended';
+}
 
 /// Regex matching #when[YYYY-MM-DD H:MM:SS AM/PM]
 final RegExp whenTagRegex = RegExp(r'#when\[\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M\]');

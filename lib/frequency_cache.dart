@@ -15,12 +15,16 @@ class EntryFrequencyCache {
   /// Set of done hashes for O(1) todo completion checks
   final Set<String> _doneHashes = {};
 
+  /// Content hash -> sorted list of completion timestamps for habit tracking
+  final Map<String, List<DateTime>> _habitCompletions = {};
+
   /// Build the cache from scratch using a list of entries.
   /// Call this on app load.
   void buildFromEntries(List<WordEntry> entries) {
     _wordCounts.clear();
     _tagCounts.clear();
     _doneHashes.clear();
+    _habitCompletions.clear();
 
     for (final entry in entries) {
       _addEntryToCache(entry);
@@ -61,6 +65,19 @@ class EntryFrequencyCache {
     return sortedEntries;
   }
 
+  /// Get habit completions for a content hash.
+  List<DateTime> getHabitCompletions(String hash) {
+    return _habitCompletions[hash] ?? [];
+  }
+
+  /// Get the count of habit completions for a content hash.
+  int getHabitCompletionCount(String hash) {
+    return _habitCompletions[hash]?.length ?? 0;
+  }
+
+  /// Get all habit completion data (hash -> timestamps).
+  Map<String, List<DateTime>> get allHabitCompletions => _habitCompletions;
+
   /// Get all tag suggestions for a given tag character and optional partial match.
   List<String> getTagSuggestions(String tagChar, [String partialTag = '']) {
     final matchingTags = _tagCounts.keys
@@ -85,6 +102,14 @@ class EntryFrequencyCache {
 
     // Update done hashes
     _updateDoneHash(entry, true);
+
+    // Track habit completions
+    if (isHabitEntry(entry.word)) {
+      final hash = generateContentHash(entry.word);
+      _habitCompletions.putIfAbsent(hash, () => []);
+      _habitCompletions[hash]!.add(entry.timestamp);
+      _habitCompletions[hash]!.sort();
+    }
   }
 
   void _removeEntryFromCache(WordEntry entry) {
@@ -101,11 +126,21 @@ class EntryFrequencyCache {
 
     // Update done hashes
     _updateDoneHash(entry, false);
+
+    // Remove habit completion
+    if (isHabitEntry(entry.word)) {
+      final hash = generateContentHash(entry.word);
+      _habitCompletions[hash]?.remove(entry.timestamp);
+      if (_habitCompletions[hash]?.isEmpty ?? false) {
+        _habitCompletions.remove(hash);
+      }
+    }
   }
 
   void _extractAndUpdateTags(String word, int delta) {
-    // Collapse #when[...] to #when so bracket content doesn't fragment into tags
-    final collapsed = word.replaceAll(whenTagRegex, '#when');
+    // Collapse #when[...] and @habit[...] so bracket content doesn't fragment into tags
+    var collapsed = word.replaceAll(whenTagRegex, '#when');
+    collapsed = collapsed.replaceAll(habitTagRegex, '@habit');
     final words = collapsed.split(' ');
     for (final w in words) {
       if (w.isNotEmpty && tagLeaders.contains(w[0])) {
