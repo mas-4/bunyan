@@ -48,7 +48,16 @@ HabitSpec? parseHabitSpec(String text) {
   final spec = specMatch.group(1)!.trim();
   if (spec.isEmpty) return DiscontinuedHabitSpec();
 
-  // Dependency: after N HASH
+  // Dependency with tag: every N TAG (tag starts with a tag leader character)
+  final depTagMatch = RegExp(r'^every\s+(\d+)\s+([!@#\^&~+=\\|]\S+)$', caseSensitive: false).firstMatch(spec);
+  if (depTagMatch != null) {
+    return DependencyTagHabitSpec(
+      requiredCount: int.parse(depTagMatch.group(1)!),
+      tag: depTagMatch.group(2)!,
+    );
+  }
+
+  // Dependency with hash: after N HASH
   final depMatch = RegExp(r'^after\s+(\d+)\s+([a-f0-9]{4})$', caseSensitive: false).firstMatch(spec);
   if (depMatch != null) {
     return DependencyHabitSpec(
@@ -416,6 +425,41 @@ class DependencyHabitSpec extends HabitSpec {
 
   @override
   String get displayLabel => 'after $requiredCount $dependencyHash';
+}
+
+class DependencyTagHabitSpec extends HabitSpec {
+  final int requiredCount;
+  final String tag;
+
+  /// Timestamps of entries matching [tag]. Set externally before calling
+  /// [isDueOnDay] (e.g. by the habit screen when building the habit list).
+  List<DateTime> tagOccurrences = [];
+
+  DependencyTagHabitSpec({required this.requiredCount, required this.tag});
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    if (tagOccurrences.isEmpty) return false;
+    if (completions.isEmpty) return tagOccurrences.length >= requiredCount;
+
+    final lastCompletion = completions.reduce((a, b) => a.isAfter(b) ? a : b);
+    final sinceLastCompletion = tagOccurrences
+        .where((t) => t.isAfter(lastCompletion))
+        .length;
+    return sinceLastCompletion >= requiredCount;
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => 1;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'every $requiredCount $tag';
 }
 
 class DiscontinuedHabitSpec extends HabitSpec {

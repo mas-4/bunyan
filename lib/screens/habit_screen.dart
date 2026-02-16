@@ -71,6 +71,26 @@ class _HabitScreenState extends State<HabitScreen> {
 
     var habits = habitMap.values.toList();
 
+    // Resolve tag dependencies: scan all entries for matching tags
+    for (final habit in habits) {
+      if (habit.spec is DependencyTagHabitSpec) {
+        final depSpec = habit.spec as DependencyTagHabitSpec;
+        final tag = depSpec.tag.toLowerCase();
+        final timestamps = <DateTime>[];
+        for (final entry in widget.entries) {
+          final words = entry.word.replaceAll(habitTagRegex, '').split(' ');
+          for (final w in words) {
+            if (w.toLowerCase() == tag || w.toLowerCase().startsWith(tag)) {
+              timestamps.add(entry.timestamp);
+              break;
+            }
+          }
+        }
+        timestamps.sort();
+        depSpec.tagOccurrences = timestamps;
+      }
+    }
+
     // Remove discontinued habits
     habits = habits.where((h) => h.spec is! DiscontinuedHabitSpec).toList();
 

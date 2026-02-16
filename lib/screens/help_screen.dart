@@ -29,9 +29,14 @@ class HelpScreen extends StatelessWidget {
                 '@habit[every march]\n'
                 '@habit[13th]           13th of every month\n'
                 '@habit[march 13th]     specific date yearly'),
-            _sub('Dependency'),
+            _sub('Dependency (hash or tag)'),
             _code('@habit[after 7 a3f7]  activates after 7\n'
-                '                      entries matching hash a3f7'),
+                '                      entries matching hash a3f7\n'
+                '@habit[every 3 @run]  activates every 3 entries\n'
+                '                      containing tag @run'),
+            _p('Tag dependencies match any entry containing the tag, '
+                'e.g. both "@run long" and "@run base" count toward '
+                '@habit[every 3 @run]. The count resets after each completion.'),
             _sub('Rescheduling & ending'),
             _p('To change a schedule, add a new entry with the updated spec. '
                 'The most recent entry per hash determines the current schedule.'),
