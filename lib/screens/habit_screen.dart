@@ -239,89 +239,38 @@ class _HabitScreenState extends State<HabitScreen> {
 
     final completed = habit.spec.completedOnDay(day, habit.completions);
     final isDue = habit.spec.isDueOnDay(day, habit.completions);
-    final isPast = dayStart.isBefore(todayStart);
 
-    // Check coverage for multi-day interval habits
-    bool isCovered = false;
-    if (habit.spec is IntervalHabitSpec) {
-      isCovered = (habit.spec as IntervalHabitSpec).isCoveredOnDay(day, habit.completions);
-    }
-
-    // Partially fulfilled: has completions but still due (e.g. 1/2 for @habit[2/d])
-    // Show count in amber, tappable to add another or long-press to undo
-    if (completed > 0 && isDue) {
+    // Has completions — tap to add more, hold to remove
+    if (completed > 0) {
       return Center(
         child: GestureDetector(
           onTap: () => _completeHabit(habit, day),
           onLongPress: () => _uncompleteHabit(habit, day),
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: Colors.amber.shade100,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '$completed',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.amber.shade800,
-              ),
-            ),
-          ),
+          child: completed == 1
+              ? Icon(Icons.check_circle, color: Colors.green.shade600, size: 24)
+              : Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$completed',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ),
         ),
       );
     }
 
-    if (completed > 1) {
-      // Multiple completions, fully satisfied: show count, tap to remove one
-      return Center(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => _uncompleteHabit(habit, day),
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: Colors.green.shade100,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '$completed',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.green.shade800,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (completed == 1) {
-      // Single completion, fully satisfied: checkmark, tap to uncomplete
-      return Center(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => _uncompleteHabit(habit, day),
-          child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 24),
-        ),
-      );
-    }
-
-    if (isCovered && !isDue) {
-      // Covered by a multi-day habit
-      return Center(
-        child: Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 24),
-      );
-    }
-
-    if (isPast && isDue) {
-      // Missed — tappable to complete retroactively
+    if (isDue && dayStart.isBefore(todayStart)) {
+      // Missed — past day that was due but not completed
       return Center(
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -332,7 +281,7 @@ class _HabitScreenState extends State<HabitScreen> {
     }
 
     if (isDue) {
-      // Empty checkmark — clickable to complete
+      // Due today — open circle, tappable to complete
       return Center(
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -342,12 +291,12 @@ class _HabitScreenState extends State<HabitScreen> {
       );
     }
 
-    // Not due, not covered — tappable open circle for early completion
+    // Not due — green outline circle, tappable for early completion
     return Center(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _completeHabit(habit, day),
-        child: Icon(Icons.radio_button_unchecked, color: Colors.grey.shade300, size: 24),
+        child: Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 24),
       ),
     );
   }
@@ -410,7 +359,7 @@ class _HabitScreenState extends State<HabitScreen> {
     showModalBottomSheet(
       context: context,
       builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,22 +367,15 @@ class _HabitScreenState extends State<HabitScreen> {
             Text('Legend', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 22), 'Due — tap to complete'),
-            _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade300, size: 22), 'Not due — tap to complete early'),
-            _legendRow(Icon(Icons.check_circle, color: Colors.green.shade600, size: 22), 'Completed — tap to remove'),
+            _legendRow(Icon(Icons.close, color: Colors.red.shade300, size: 22), 'Missed — tap to complete retroactively'),
+            _legendRow(Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 22), 'Not due — tap to complete early'),
+            _legendRow(Icon(Icons.check_circle, color: Colors.green.shade600, size: 22), 'Completed — tap to add more, hold to remove'),
             _legendRow(Container(
               width: 24, height: 24,
               decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
               alignment: Alignment.center,
               child: Text('3', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
-            ), 'Multiple completions — tap to remove one'),
-            _legendRow(Container(
-              width: 24, height: 24,
-              decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
-              alignment: Alignment.center,
-              child: Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
-            ), 'Partially done — tap to add, hold to remove'),
-            _legendRow(Icon(Icons.close, color: Colors.red.shade300, size: 22), 'Missed — tap to complete retroactively'),
-            _legendRow(Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 22), 'Covered by interval habit'),
+            ), 'Multiple completions — tap to add, hold to remove'),
             const SizedBox(height: 8),
             Text('Swipe left/right on the days to scroll through time.',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
