@@ -579,7 +579,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ),
           );
         } else {
-          return true;
+          // Swipe-right: add a copy, then snap back (don't dismiss the original)
+          _addEntry(entry.word);
+          return false;
         }
       },
       background: Container(
@@ -597,8 +599,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       onDismissed: (direction) {
         if (direction == DismissDirection.endToStart) {
           _deleteEntry(entry);
-        } else if (direction == DismissDirection.startToEnd) {
-          _addEntry(entry.word);
         }
       },
       child: ListTile(
