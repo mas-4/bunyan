@@ -1712,6 +1712,18 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               ]
             : [
                 IconButton(
+                  icon: Icon(Icons.help_outline),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HelpScreen(),
+                      ),
+                    );
+                  },
+                  tooltip: 'Help',
+                ),
+                IconButton(
                   icon: Icon(Icons.calendar_month),
                   onPressed: () {
                     Navigator.push(
@@ -1732,18 +1744,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   icon: Icon(Icons.access_time),
                   onPressed: _openTimeSuggestions,
                   tooltip: 'Time Suggestions',
-                ),
-                IconButton(
-                  icon: Icon(Icons.help_outline),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HelpScreen(),
-                      ),
-                    );
-                  },
-                  tooltip: 'Help',
                 ),
               ],
       ),

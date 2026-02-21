@@ -3,16 +3,17 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../utils.dart';
 import '../frequency_cache.dart';
+import 'habit_detail_screen.dart';
 
 /// Info about a single habit derived from scanning all entries.
-class _HabitInfo {
+class HabitInfo {
   final String hash;
   final String displayName;
   final HabitSpec spec;
   final String fullText; // most recent entry text (used when creating completions)
   final List<DateTime> completions;
 
-  _HabitInfo({
+  HabitInfo({
     required this.hash,
     required this.displayName,
     required this.spec,
@@ -44,9 +45,9 @@ class HabitScreen extends StatefulWidget {
 class _HabitScreenState extends State<HabitScreen> {
   static bool _filterDueOnly = false;
 
-  List<_HabitInfo> _buildHabitList() {
+  List<HabitInfo> _buildHabitList() {
     // Group entries by content hash; most recent entry determines current spec
-    final habitMap = <String, _HabitInfo>{};
+    final habitMap = <String, HabitInfo>{};
     // We need entries sorted oldest→newest so last write wins
     final sorted = List<WordEntry>.from(widget.entries)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -62,7 +63,7 @@ class _HabitScreenState extends State<HabitScreen> {
       final completions = existing?.completions ?? <DateTime>[];
       completions.add(entry.timestamp);
 
-      habitMap[hash] = _HabitInfo(
+      habitMap[hash] = HabitInfo(
         hash: hash,
         displayName: content,
         spec: spec,
@@ -137,7 +138,7 @@ class _HabitScreenState extends State<HabitScreen> {
     return days[day.weekday - 1];
   }
 
-  Widget _buildHabitRow(_HabitInfo habit) {
+  Widget _buildHabitRow(HabitInfo habit) {
     final today = DateTime.now();
 
     return Padding(
@@ -147,28 +148,41 @@ class _HabitScreenState extends State<HabitScreen> {
           // Name + spec badge
           Expanded(
             flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  habit.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    habit.spec.displayLabel,
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HabitDetailScreen(
+                    habit: habit,
+                    entries: widget.entries,
+                    onAddEntryWithTimestamp: widget.onAddEntryWithTimestamp,
+                    onDeleteEntry: widget.onDeleteEntry,
                   ),
                 ),
-              ],
+              ).then((_) { if (mounted) setState(() {}); }),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    habit.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 2),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      habit.spec.displayLabel,
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           // 5 day cells (4 days ago → today, left to right)
@@ -181,7 +195,7 @@ class _HabitScreenState extends State<HabitScreen> {
     );
   }
 
-  Widget _buildDayCell(_HabitInfo habit, DateTime day) {
+  Widget _buildDayCell(HabitInfo habit, DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -294,13 +308,17 @@ class _HabitScreenState extends State<HabitScreen> {
       );
     }
 
-    // Not due, not covered — blank
+    // Not due, not covered — tappable open circle for early completion
     return Center(
-      child: Icon(Icons.remove, color: Colors.grey.shade300, size: 16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _completeHabit(habit, day),
+        child: Icon(Icons.radio_button_unchecked, color: Colors.grey.shade300, size: 24),
+      ),
     );
   }
 
-  Future<void> _completeHabit(_HabitInfo habit, DateTime day) async {
+  Future<void> _completeHabit(HabitInfo habit, DateTime day) async {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final dayStart = DateTime(day.year, day.month, day.day);
@@ -320,7 +338,7 @@ class _HabitScreenState extends State<HabitScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _uncompleteHabit(_HabitInfo habit, DateTime day) async {
+  Future<void> _uncompleteHabit(HabitInfo habit, DateTime day) async {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
 
@@ -336,6 +354,19 @@ class _HabitScreenState extends State<HabitScreen> {
     }
 
     if (toDelete != null) {
+      final dateLabel = DateTimeFormatter(day).date;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Remove completion'),
+          content: Text('Remove completion on $dateLabel?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
       await widget.onDeleteEntry(toDelete);
       if (mounted) setState(() {});
     }
@@ -377,6 +408,7 @@ class _HabitScreenState extends State<HabitScreen> {
                 const Divider(height: 1),
                 Expanded(
                   child: ListView.separated(
+                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24),
                     itemCount: habits.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, index) => _buildHabitRow(habits[index]),
