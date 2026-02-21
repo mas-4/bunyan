@@ -1678,7 +1678,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         Scaffold(
           appBar: AppBar(
         title: Text(
-          _bulkEditMode ? '${_selectedIndices.length} selected' : 'Bunyan 🪓',
+          _bulkEditMode ? '${_selectedIndices.length} selected' : '',
         ),
         leading: _bulkEditMode
             ? IconButton(icon: Icon(Icons.close), onPressed: _exitBulkEditMode)

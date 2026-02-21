@@ -45,6 +45,8 @@ class HabitScreen extends StatefulWidget {
 class _HabitScreenState extends State<HabitScreen> {
   static bool _filterDueOnly = false;
   static bool _filterLoaded = false;
+  int _dayOffset = 0; // 0 = today is rightmost column; positive = shifted back
+  double _dragAccumulator = 0;
 
   @override
   void initState() {
@@ -124,7 +126,7 @@ class _HabitScreenState extends State<HabitScreen> {
     return habits;
   }
 
-  /// Build the 5-day header row (today → 4 days ago, right to left).
+  /// Build the 5-day header row.
   Widget _buildDayHeaders() {
     final today = DateTime.now();
     return Row(
@@ -134,7 +136,7 @@ class _HabitScreenState extends State<HabitScreen> {
           Expanded(
             child: Center(
               child: Text(
-                _dayLabel(today.subtract(Duration(days: i))),
+                _dayLabel(today.subtract(Duration(days: i + _dayOffset))),
                 style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ),
@@ -150,8 +152,12 @@ class _HabitScreenState extends State<HabitScreen> {
     final diff = today.difference(d).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yest';
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days[day.weekday - 1];
+    if (diff <= 6) {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days[day.weekday - 1];
+    }
+    // Older dates: show M/D
+    return '${day.month}/${day.day}';
   }
 
   Widget _buildHabitRow(HabitInfo habit) {
@@ -201,10 +207,10 @@ class _HabitScreenState extends State<HabitScreen> {
               ),
             ),
           ),
-          // 5 day cells (4 days ago → today, left to right)
+          // 5 day cells (oldest → newest, left to right)
           for (int i = 4; i >= 0; i--)
             Expanded(
-              child: _buildDayCell(habit, today.subtract(Duration(days: i))),
+              child: _buildDayCell(habit, today.subtract(Duration(days: i + _dayOffset))),
             ),
         ],
       ),
@@ -418,22 +424,38 @@ class _HabitScreenState extends State<HabitScreen> {
                 style: TextStyle(color: Colors.grey.shade600),
               ),
             )
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: _buildDayHeaders(),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24),
-                    itemCount: habits.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) => _buildHabitRow(habits[index]),
+          : GestureDetector(
+              onHorizontalDragStart: (_) => _dragAccumulator = 0,
+              onHorizontalDragUpdate: (details) {
+                _dragAccumulator += details.delta.dx;
+                const threshold = 40.0;
+                if (_dragAccumulator > threshold) {
+                  // Dragged right → go back in time
+                  setState(() => _dayOffset += 1);
+                  _dragAccumulator = 0;
+                } else if (_dragAccumulator < -threshold) {
+                  // Dragged left → go forward in time
+                  setState(() => _dayOffset = (_dayOffset - 1).clamp(0, _dayOffset));
+                  _dragAccumulator = 0;
+                }
+              },
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: _buildDayHeaders(),
                   ),
-                ),
-              ],
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24),
+                      itemCount: habits.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) => _buildHabitRow(habits[index]),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }
