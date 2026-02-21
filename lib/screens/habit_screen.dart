@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../utils.dart';
+import '../habit_logic.dart';
 import '../frequency_cache.dart';
 import 'habit_detail_screen.dart';
 
@@ -102,68 +103,6 @@ class _HabitScreenState extends State<HabitScreen> {
     }
   }
 
-  /// Extract the first #tag from a habit's displayName.
-  static String? _extractFirstTag(String displayName) {
-    final match = RegExp(r'#\S+').firstMatch(displayName);
-    return match?.group(0);
-  }
-
-  /// Compute strength (completion rate) for a habit over its lifetime.
-  /// Reuses the same logic as the detail screen's _calculateStrength(0).
-  static double _calculateStrength(HabitInfo habit) {
-    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    final spec = habit.spec;
-    final allCompletions = List<DateTime>.from(habit.completions)..sort();
-
-    if (allCompletions.isEmpty) return 0;
-    final startDay = DateTime(allCompletions.first.year, allCompletions.first.month, allCompletions.first.day);
-
-    int totalDue = 0;
-    int satisfiedDue = 0;
-
-    for (var day = startDay;
-        !day.isAfter(today);
-        day = day.add(const Duration(days: 1))) {
-      final completionsUpToDay =
-          allCompletions.where((c) {
-            final cd = DateTime(c.year, c.month, c.day);
-            return cd.compareTo(day) <= 0;
-          }).toList();
-
-      final isDue = spec.isDueOnDay(day, completionsUpToDay);
-      if (!isDue && spec.requiredOnDay(day, completionsUpToDay) == 0) continue;
-
-      if (isDue || spec.completedOnDay(day, allCompletions) > 0) {
-        totalDue++;
-        if (!isDue) {
-          satisfiedDue++;
-        } else if (spec.completedOnDay(day, allCompletions) > 0) {
-          final completed = spec.completedOnDay(day, allCompletions);
-          final required = spec.requiredOnDay(day, completionsUpToDay);
-          if (required > 0 && completed >= required) {
-            satisfiedDue++;
-          }
-        }
-      }
-    }
-
-    if (totalDue == 0) return 1.0;
-    return satisfiedDue / totalDue;
-  }
-
-  /// Compute the number of days until next due (0 = due today, 1 = tomorrow, etc).
-  /// Returns 999 if not due within the next year.
-  static int _nextDueDayIndex(HabitInfo habit) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    for (int i = 0; i <= 366; i++) {
-      final day = today.add(Duration(days: i));
-      if (habit.spec.isDueOnDay(day, habit.completions)) return i;
-    }
-    return 999;
-  }
-
   List<HabitInfo> _buildHabitList() {
     // Group entries by content hash; most recent entry determines current spec
     final habitMap = <String, HabitInfo>{};
@@ -233,12 +172,23 @@ class _HabitScreenState extends State<HabitScreen> {
       habits = habits.where((h) => h.spec.isDueOnDay(today, h.completions)).toList();
     }
 
+    // Precompute sort keys to avoid recomputing in O(N log N) comparisons
+    Map<String, int>? dueMap;
+    Map<String, double>? strengthMap;
+
+    if (_sortMode == 'due') {
+      dueMap = {for (final h in habits) h.hash: nextDueDayIndex(h.spec, h.completions)};
+    }
+    if (_sortMode == 'strength') {
+      strengthMap = {for (final h in habits) h.hash: calculateHabitStrength(h.spec, h.completions)};
+    }
+
     // Sort based on current mode
     switch (_sortMode) {
       case 'tag':
         habits.sort((a, b) {
-          final tagA = _extractFirstTag(a.displayName)?.toLowerCase() ?? 'zzz';
-          final tagB = _extractFirstTag(b.displayName)?.toLowerCase() ?? 'zzz';
+          final tagA = extractFirstTag(a.displayName)?.toLowerCase() ?? 'zzz';
+          final tagB = extractFirstTag(b.displayName)?.toLowerCase() ?? 'zzz';
           final cmp = tagA.compareTo(tagB);
           if (cmp != 0) return cmp;
           return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
@@ -246,18 +196,14 @@ class _HabitScreenState extends State<HabitScreen> {
         break;
       case 'due':
         habits.sort((a, b) {
-          final dueA = _nextDueDayIndex(a);
-          final dueB = _nextDueDayIndex(b);
-          final cmp = dueA.compareTo(dueB);
+          final cmp = dueMap![a.hash]!.compareTo(dueMap[b.hash]!);
           if (cmp != 0) return cmp;
           return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
         });
         break;
       case 'strength':
         habits.sort((a, b) {
-          final sA = _calculateStrength(a);
-          final sB = _calculateStrength(b);
-          final cmp = sA.compareTo(sB);
+          final cmp = strengthMap![a.hash]!.compareTo(strengthMap[b.hash]!);
           if (cmp != 0) return cmp;
           return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
         });
@@ -279,7 +225,7 @@ class _HabitScreenState extends State<HabitScreen> {
     String? currentTag;
 
     for (final habit in habits) {
-      final tag = _extractFirstTag(habit.displayName) ?? 'Other';
+      final tag = extractFirstTag(habit.displayName) ?? 'Other';
       if (tag != currentTag) {
         currentTag = tag;
         items.add(_HabitListItem.header(tag));

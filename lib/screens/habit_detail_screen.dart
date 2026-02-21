@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../utils.dart';
+import '../habit_logic.dart';
 import 'habit_screen.dart';
 
 DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -177,53 +178,6 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   // Strength Meters
   // ------------------------------------------------------------------
 
-  double _calculateStrength(int periodDays) {
-    final today = _startOfDay(DateTime.now());
-    final spec = widget.habit.spec;
-    final allCompletions = List<DateTime>.from(widget.habit.completions)..sort();
-
-    DateTime startDay;
-    if (periodDays == 0) {
-      if (allCompletions.isEmpty) return 0;
-      startDay = _startOfDay(allCompletions.first);
-    } else {
-      startDay = today.subtract(Duration(days: periodDays - 1));
-      if (allCompletions.isNotEmpty) {
-        final first = _startOfDay(allCompletions.first);
-        if (startDay.isBefore(first)) startDay = first;
-      }
-    }
-
-    int totalDue = 0;
-    int satisfiedDue = 0;
-
-    for (var day = startDay;
-        !day.isAfter(today);
-        day = day.add(const Duration(days: 1))) {
-      final completionsUpToDay =
-          allCompletions.where((c) => _startOfDay(c).compareTo(day) <= 0).toList();
-
-      final isDue = spec.isDueOnDay(day, completionsUpToDay);
-      if (!isDue && spec.requiredOnDay(day, completionsUpToDay) == 0) continue;
-
-      if (isDue || spec.completedOnDay(day, allCompletions) > 0) {
-        totalDue++;
-        if (!isDue) {
-          satisfiedDue++;
-        } else if (spec.completedOnDay(day, allCompletions) > 0) {
-          final completed = spec.completedOnDay(day, allCompletions);
-          final required = spec.requiredOnDay(day, completionsUpToDay);
-          if (required > 0 && completed >= required) {
-            satisfiedDue++;
-          }
-        }
-      }
-    }
-
-    if (totalDue == 0) return 1.0;
-    return satisfiedDue / totalDue;
-  }
-
   Widget _buildStrengthMeters() {
     final periods = [
       ('Week', 7),
@@ -242,7 +196,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             for (final (label, days) in periods) ...[
-              _buildStrengthRow(label, _calculateStrength(days)),
+              _buildStrengthRow(label, calculateHabitStrength(widget.habit.spec, widget.habit.completions, periodDays: days)),
               if (label != 'All-time') const SizedBox(height: 8),
             ],
           ],
