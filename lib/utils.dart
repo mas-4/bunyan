@@ -48,6 +48,23 @@ HabitSpec? parseHabitSpec(String text) {
   final spec = specMatch.group(1)!.trim();
   if (spec.isEmpty) return DiscontinuedHabitSpec();
 
+  // Comma-separated specs → parse each and combine
+  if (spec.contains(',')) {
+    final parts = spec.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final specs = <HabitSpec>[];
+    for (final part in parts) {
+      final parsed = _parseSingleSpec(part);
+      if (parsed != null) specs.add(parsed);
+    }
+    if (specs.isEmpty) return null;
+    if (specs.length == 1) return specs.first;
+    return CompositeHabitSpec(specs: specs);
+  }
+
+  return _parseSingleSpec(spec);
+}
+
+HabitSpec? _parseSingleSpec(String spec) {
   // Dependency with tag: every N TAG (tag starts with a tag leader character)
   final depTagMatch = RegExp(r'^every\s+(\d+)\s+([!@#\^&~+=\\|]\S+)$', caseSensitive: false).firstMatch(spec);
   if (depTagMatch != null) {
@@ -94,14 +111,14 @@ HabitSpec? parseHabitSpec(String text) {
     );
   }
 
-  // Calendar: every monday/tuesday/...
-  final weekdayMatch = RegExp(r'^every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$', caseSensitive: false).firstMatch(spec);
+  // Calendar: weekday name (with or without "every" prefix)
+  final weekdayMatch = RegExp(r'^(?:every\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$', caseSensitive: false).firstMatch(spec);
   if (weekdayMatch != null) {
     return WeekdayHabitSpec(dayName: weekdayMatch.group(1)!.toLowerCase());
   }
 
-  // Calendar: every march/april/...
-  final monthlyMatch = RegExp(r'^every\s+(january|february|march|april|may|june|july|august|september|october|november|december)$', caseSensitive: false).firstMatch(spec);
+  // Calendar: month name (with or without "every" prefix)
+  final monthlyMatch = RegExp(r'^(?:every\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)$', caseSensitive: false).firstMatch(spec);
   if (monthlyMatch != null) {
     return YearlyMonthHabitSpec(monthName: monthlyMatch.group(1)!.toLowerCase());
   }
@@ -460,6 +477,36 @@ class DependencyTagHabitSpec extends HabitSpec {
 
   @override
   String get displayLabel => 'every $requiredCount $tag';
+}
+
+/// Combines multiple specs — due if ANY sub-spec says it's due.
+class CompositeHabitSpec extends HabitSpec {
+  final List<HabitSpec> specs;
+
+  CompositeHabitSpec({required this.specs});
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) {
+    // Due if any sub-spec is due AND not already completed on this day
+    final dayStart = _startOfDay(day);
+    final completedToday = completions.where((c) => _startOfDay(c) == dayStart).length;
+    if (completedToday > 0) return false;
+    return specs.any((s) => s.isDueOnDay(day, completions));
+  }
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) {
+    return specs.any((s) => s.requiredOnDay(day, completions) > 0) ? 1 : 0;
+  }
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => specs.map((s) => s.displayLabel).join(', ');
 }
 
 class DiscontinuedHabitSpec extends HabitSpec {

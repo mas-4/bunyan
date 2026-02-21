@@ -1490,6 +1490,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           onAddEntry: (word) async {
             await _addEntry(word, clearController: false);
           },
+          onAddEntryWithTimestamp: (word, timestamp) async {
+            await _addEntryWithTimestamp(word, timestamp);
+          },
           onDeleteEntry: (entry) async {
             await _deleteEntry(entry);
           },

@@ -25,6 +25,7 @@ class HabitScreen extends StatefulWidget {
   final List<WordEntry> entries;
   final EntryFrequencyCache cache;
   final Future<void> Function(String word) onAddEntry;
+  final Future<void> Function(String word, DateTime timestamp) onAddEntryWithTimestamp;
   final Future<void> Function(WordEntry entry) onDeleteEntry;
 
   const HabitScreen({
@@ -32,6 +33,7 @@ class HabitScreen extends StatefulWidget {
     required this.entries,
     required this.cache,
     required this.onAddEntry,
+    required this.onAddEntryWithTimestamp,
     required this.onDeleteEntry,
   });
 
@@ -40,7 +42,7 @@ class HabitScreen extends StatefulWidget {
 }
 
 class _HabitScreenState extends State<HabitScreen> {
-  bool _filterDueOnly = false;
+  static bool _filterDueOnly = false;
 
   List<_HabitInfo> _buildHabitList() {
     // Group entries by content hash; most recent entry determines current spec
@@ -202,7 +204,7 @@ class _HabitScreenState extends State<HabitScreen> {
     if (completed > 0 && isDue) {
       return Center(
         child: GestureDetector(
-          onTap: () => _completeHabit(habit),
+          onTap: () => _completeHabit(habit, day),
           onLongPress: () => _uncompleteHabit(habit, day),
           child: Container(
             width: 28,
@@ -271,9 +273,13 @@ class _HabitScreenState extends State<HabitScreen> {
     }
 
     if (isPast && isDue) {
-      // Missed
+      // Missed — tappable to complete retroactively
       return Center(
-        child: Icon(Icons.close, color: Colors.red.shade300, size: 22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _completeHabit(habit, day),
+          child: Icon(Icons.close, color: Colors.red.shade300, size: 22),
+        ),
       );
     }
 
@@ -282,7 +288,7 @@ class _HabitScreenState extends State<HabitScreen> {
       return Center(
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _completeHabit(habit),
+          onTap: () => _completeHabit(habit, day),
           child: Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 24),
         ),
       );
@@ -294,8 +300,23 @@ class _HabitScreenState extends State<HabitScreen> {
     );
   }
 
-  Future<void> _completeHabit(_HabitInfo habit) async {
-    await widget.onAddEntry(habit.fullText);
+  Future<void> _completeHabit(_HabitInfo habit, DateTime day) async {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final dayStart = DateTime(day.year, day.month, day.day);
+
+    if (dayStart.isBefore(todayStart)) {
+      // Past day — show time picker
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: 12, minute: 0),
+      );
+      if (time == null || !mounted) return;
+      final timestamp = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+      await widget.onAddEntryWithTimestamp(habit.fullText, timestamp);
+    } else {
+      await widget.onAddEntry(habit.fullText);
+    }
     if (mounted) setState(() {});
   }
 
