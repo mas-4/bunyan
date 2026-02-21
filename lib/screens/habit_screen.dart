@@ -92,21 +92,33 @@ class _HabitScreenState extends State<HabitScreen> {
 
     var habits = habitMap.values.toList();
 
-    // Resolve tag dependencies: scan all entries for matching tags
-    for (final habit in habits) {
-      if (habit.spec is DependencyTagHabitSpec) {
-        final depSpec = habit.spec as DependencyTagHabitSpec;
-        final tag = depSpec.tag.toLowerCase();
-        final timestamps = <DateTime>[];
-        for (final entry in widget.entries) {
-          final words = entry.word.replaceAll(habitTagRegex, '').split(' ');
-          for (final w in words) {
-            if (w.toLowerCase() == tag || w.toLowerCase().startsWith(tag)) {
-              timestamps.add(entry.timestamp);
+    // Pre-build tag→timestamps index (one pass over all entries)
+    final depHabits = habits.where((h) => h.spec is DependencyTagHabitSpec).toList();
+    if (depHabits.isNotEmpty) {
+      final neededTags = depHabits
+          .map((h) => (h.spec as DependencyTagHabitSpec).tag.toLowerCase())
+          .toSet();
+      final tagTimestamps = <String, List<DateTime>>{};
+      for (final tag in neededTags) {
+        tagTimestamps[tag] = [];
+      }
+
+      for (final entry in widget.entries) {
+        final words = entry.word.replaceAll(habitTagRegex, '').split(' ');
+        for (final w in words) {
+          final wLower = w.toLowerCase();
+          for (final tag in neededTags) {
+            if (wLower == tag || wLower.startsWith(tag)) {
+              tagTimestamps[tag]!.add(entry.timestamp);
               break;
             }
           }
         }
+      }
+
+      for (final habit in depHabits) {
+        final depSpec = habit.spec as DependencyTagHabitSpec;
+        final timestamps = tagTimestamps[depSpec.tag.toLowerCase()]!;
         timestamps.sort();
         depSpec.tagOccurrences = timestamps;
       }
@@ -394,6 +406,56 @@ class _HabitScreenState extends State<HabitScreen> {
     }
   }
 
+  void _showLegend() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Legend', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 22), 'Due — tap to complete'),
+            _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade300, size: 22), 'Not due — tap to complete early'),
+            _legendRow(Icon(Icons.check_circle, color: Colors.green.shade600, size: 22), 'Completed — tap to remove'),
+            _legendRow(Container(
+              width: 24, height: 24,
+              decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
+              alignment: Alignment.center,
+              child: Text('3', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+            ), 'Multiple completions — tap to remove one'),
+            _legendRow(Container(
+              width: 24, height: 24,
+              decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
+              alignment: Alignment.center,
+              child: Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
+            ), 'Partially done — tap to add, hold to remove'),
+            _legendRow(Icon(Icons.close, color: Colors.red.shade300, size: 22), 'Missed — tap to complete retroactively'),
+            _legendRow(Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 22), 'Covered by interval habit'),
+            const SizedBox(height: 8),
+            Text('Swipe left/right on the days to scroll through time.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _legendRow(Widget icon, String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(width: 32, child: Center(child: icon)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final habits = _buildHabitList();
@@ -411,6 +473,11 @@ class _HabitScreenState extends State<HabitScreen> {
               setState(() => _filterDueOnly = !_filterDueOnly);
               saveBoolSetting('habitFilterDueOnly', _filterDueOnly);
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Legend',
+            onPressed: _showLegend,
           ),
         ],
       ),

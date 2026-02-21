@@ -50,14 +50,28 @@ class WordEntry {
   WordEntry({required this.word, required this.timestamp});
 
   String toCsv() {
-    return '"${timestamp.toIso8601String()}","$word"';
+    final escaped = word.replaceAll('"', '""');
+    return '"${timestamp.toIso8601String()}","$escaped"';
   }
 
   static WordEntry fromCsv(String csvLine) {
-    // Simple CSV parsing - handles quoted fields
-    final parts = csvLine.split('","');
-    final timestampStr = parts[0].replaceAll('"', '');
-    final word = parts[1].replaceAll('"', '');
+    // RFC 4180 CSV parsing: fields are quoted, internal quotes are doubled ("")
+    if (csvLine.length < 5) throw FormatException('Invalid CSV line: $csvLine');
+
+    // First field: timestamp (starts at index 1, after opening quote)
+    final firstClose = csvLine.indexOf('","');
+    if (firstClose < 0) {
+      // Fallback for legacy lines without proper quoting
+      final parts = csvLine.split(',');
+      final ts = parts[0].replaceAll('"', '');
+      final w = parts.sublist(1).join(',').replaceAll('"', '');
+      return WordEntry(word: w, timestamp: DateTime.parse(ts));
+    }
+
+    final timestampStr = csvLine.substring(1, firstClose);
+    // Second field: word (starts after '","', ends before final '"')
+    final wordRaw = csvLine.substring(firstClose + 3, csvLine.length - 1);
+    final word = wordRaw.replaceAll('""', '"');
     return WordEntry(word: word, timestamp: DateTime.parse(timestampStr));
   }
 }

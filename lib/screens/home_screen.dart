@@ -500,7 +500,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             ),
           ],
         ),
-        title: Text(entry.word),
+        title: Text(entry.word.replaceAll(whenTagRegex, '#when').trim()),
         subtitle: Text('${dt.time} · $hash'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -564,7 +564,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             context: context,
             builder: (context) => AlertDialog(
               title: Text('Delete Entry'),
-              content: Text('Delete "${entry.word}"?'),
+              content: Text('Delete "${entry.word.replaceAll(whenTagRegex, '#when').trim()}"?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -604,7 +604,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       child: ListTile(
         leading: leading,
         title: Text(
-          entry.word,
+          entry.word.replaceAll(whenTagRegex, '#when').trim(),
           style: (_isTodoEntry(entry) && _isTodoCompleted(entry) && !_isFilteringTodo)
               ? TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
               : null,
