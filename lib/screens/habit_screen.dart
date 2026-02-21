@@ -44,6 +44,22 @@ class HabitScreen extends StatefulWidget {
 
 class _HabitScreenState extends State<HabitScreen> {
   static bool _filterDueOnly = false;
+  static bool _filterLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_filterLoaded) {
+      loadBoolSetting('habitFilterDueOnly').then((value) {
+        if (mounted && value != _filterDueOnly) {
+          setState(() => _filterDueOnly = value);
+        } else {
+          _filterDueOnly = value;
+        }
+        _filterLoaded = true;
+      });
+    }
+  }
 
   List<HabitInfo> _buildHabitList() {
     // Group entries by content hash; most recent entry determines current spec
@@ -385,7 +401,10 @@ class _HabitScreenState extends State<HabitScreen> {
               _filterDueOnly ? Icons.filter_alt : Icons.filter_alt_outlined,
             ),
             tooltip: _filterDueOnly ? 'Show all habits' : 'Show due only',
-            onPressed: () => setState(() => _filterDueOnly = !_filterDueOnly),
+            onPressed: () {
+              setState(() => _filterDueOnly = !_filterDueOnly);
+              saveBoolSetting('habitFilterDueOnly', _filterDueOnly);
+            },
           ),
         ],
       ),

@@ -618,6 +618,40 @@ Future<void> saveTimeSettings(int aroundNow, int relatedEntries, [int? groupingW
   }
 }
 
+Future<bool> loadBoolSetting(String key, {bool defaultValue = false}) async {
+  try {
+    final file = await _getSettingsFile();
+    if (await file.exists()) {
+      final contents = await file.readAsString();
+      for (final line in contents.split('\n')) {
+        if (line.startsWith('$key=')) {
+          return line.substring(key.length + 1) == 'true';
+        }
+      }
+    }
+  } catch (e) {
+    // Silently fail
+  }
+  return defaultValue;
+}
+
+Future<void> saveBoolSetting(String key, bool value) async {
+  try {
+    final file = await _getSettingsFile();
+    var contents = '';
+    if (await file.exists()) {
+      contents = await file.readAsString();
+      final lines = contents.split('\n').where((l) => !l.startsWith('$key=')).toList();
+      contents = lines.join('\n');
+    }
+    if (contents.isNotEmpty && !contents.endsWith('\n')) contents += '\n';
+    contents += '$key=$value';
+    await file.writeAsString(contents);
+  } catch (e) {
+    // Silently fail
+  }
+}
+
 Future<File> getFile() async {
   final directory = await getApplicationDocumentsDirectory();
   return File('${directory.path}/bunyan.csv');
