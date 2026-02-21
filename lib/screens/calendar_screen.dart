@@ -249,17 +249,79 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   }
 
   // --- Upcoming Events Tab ---
+
+  /// Compute next due dates for calendar-based habits (weekday, monthly, yearly).
+  List<({String name, String spec, DateTime date})> _buildUpcomingHabits() {
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final result = <({String name, String spec, DateTime date})>[];
+
+    // Build habit map (same logic as habit_screen)
+    final habitMap = <String, ({String name, HabitSpec spec, List<DateTime> completions})>{};
+    final sorted = List<WordEntry>.from(widget.entries)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    for (final entry in sorted) {
+      if (!isHabitEntry(entry.word)) continue;
+      final hash = generateContentHash(entry.word);
+      final spec = parseHabitSpec(entry.word);
+      if (spec == null) continue;
+      final content = extractHabitContent(entry.word);
+
+      final existing = habitMap[hash];
+      final completions = existing?.completions ?? <DateTime>[];
+      completions.add(entry.timestamp);
+      habitMap[hash] = (name: content, spec: spec, completions: completions);
+    }
+
+    for (final habit in habitMap.values) {
+      if (habit.spec is DiscontinuedHabitSpec) continue;
+
+      // Only include calendar-based specs (and composites containing them)
+      final specs = habit.spec is CompositeHabitSpec
+          ? (habit.spec as CompositeHabitSpec).specs
+          : [habit.spec];
+
+      final isCalendarBased = specs.any((s) =>
+          s is WeekdayHabitSpec ||
+          s is MonthlyDateHabitSpec ||
+          s is YearlyDateHabitSpec ||
+          s is YearlyMonthHabitSpec);
+      if (!isCalendarBased) continue;
+
+      // Find next due date within 366 days
+      for (int i = 0; i <= 366; i++) {
+        final day = todayStart.add(Duration(days: i));
+        if (habit.spec.isDueOnDay(day, habit.completions)) {
+          result.add((name: habit.name, spec: habit.spec.displayLabel, date: day));
+          break;
+        }
+      }
+    }
+
+    result.sort((a, b) => a.date.compareTo(b.date));
+    return result;
+  }
+
   Widget _buildAllEventsTab() {
     final now = DateTime.now();
 
-    // Only show #when entries whose calendar date is in the future
-    final upcomingByDate = <String, List<_CalendarEntry>>{};
+    // #when entries in the future
+    final upcomingByDate = <String, List<dynamic>>{};
     for (final ce in _calendarEntries) {
       if (!ce.hasWhenTag) continue;
       if (ce.calendarDate.isBefore(now)) continue;
       final key = _dateKey(ce.calendarDate);
       upcomingByDate.putIfAbsent(key, () => []);
       upcomingByDate[key]!.add(ce);
+    }
+
+    // Upcoming habit due dates
+    final upcomingHabits = _buildUpcomingHabits();
+    for (final habit in upcomingHabits) {
+      final key = _dateKey(habit.date);
+      upcomingByDate.putIfAbsent(key, () => []);
+      upcomingByDate[key]!.add(habit);
     }
 
     final sortedKeys = upcomingByDate.keys.toList()..sort();
@@ -272,7 +334,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       itemCount: sortedKeys.length,
       itemBuilder: (context, index) {
         final key = sortedKeys[index];
-        final entries = upcomingByDate[key]!;
+        final items = upcomingByDate[key]!;
         final parts = key.split('-');
         final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
 
@@ -288,7 +350,19 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
                     ),
               ),
             ),
-            ...entries.map((ce) => _buildCalendarEntryTile(ce, hideWhenTag: true)),
+            ...items.map((item) {
+              if (item is _CalendarEntry) {
+                return _buildCalendarEntryTile(item, hideWhenTag: true);
+              } else {
+                final habit = item as ({String name, String spec, DateTime date});
+                return ListTile(
+                  leading: Icon(Icons.loop, size: 18, color: Colors.grey.shade600),
+                  title: Text(habit.name),
+                  subtitle: Text(habit.spec),
+                  dense: true,
+                );
+              }
+            }),
             if (index < sortedKeys.length - 1) const Divider(),
           ],
         );

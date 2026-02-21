@@ -207,7 +207,7 @@ class IntervalHabitSpec extends HabitSpec {
   }
 
   @override
-  String get displayLabel => 'every $interval$unit';
+  String get displayLabel => '$interval$unit';
 }
 
 class FrequencyHabitSpec extends HabitSpec {
@@ -323,7 +323,7 @@ class WeekdayHabitSpec extends HabitSpec {
   }
 
   @override
-  String get displayLabel => 'every ${dayName.substring(0, 3)}';
+  String get displayLabel => dayName.substring(0, 3);
 }
 
 class MonthlyDateHabitSpec extends HabitSpec {
@@ -416,7 +416,7 @@ class YearlyMonthHabitSpec extends HabitSpec {
   }
 
   @override
-  String get displayLabel => 'every ${monthName.substring(0, 3)}';
+  String get displayLabel => monthName.substring(0, 3);
 }
 
 class DependencyHabitSpec extends HabitSpec {
@@ -476,7 +476,7 @@ class DependencyTagHabitSpec extends HabitSpec {
   }
 
   @override
-  String get displayLabel => 'every $requiredCount $tag';
+  String get displayLabel => '$requiredCount $tag';
 }
 
 /// Combines multiple specs — due if ANY sub-spec says it's due.
@@ -636,6 +636,40 @@ Future<bool> loadBoolSetting(String key, {bool defaultValue = false}) async {
 }
 
 Future<void> saveBoolSetting(String key, bool value) async {
+  try {
+    final file = await _getSettingsFile();
+    var contents = '';
+    if (await file.exists()) {
+      contents = await file.readAsString();
+      final lines = contents.split('\n').where((l) => !l.startsWith('$key=')).toList();
+      contents = lines.join('\n');
+    }
+    if (contents.isNotEmpty && !contents.endsWith('\n')) contents += '\n';
+    contents += '$key=$value';
+    await file.writeAsString(contents);
+  } catch (e) {
+    // Silently fail
+  }
+}
+
+Future<String> loadStringSetting(String key, {String defaultValue = ''}) async {
+  try {
+    final file = await _getSettingsFile();
+    if (await file.exists()) {
+      final contents = await file.readAsString();
+      for (final line in contents.split('\n')) {
+        if (line.startsWith('$key=')) {
+          return line.substring(key.length + 1);
+        }
+      }
+    }
+  } catch (e) {
+    // Silently fail
+  }
+  return defaultValue;
+}
+
+Future<void> saveStringSetting(String key, String value) async {
   try {
     final file = await _getSettingsFile();
     var contents = '';
