@@ -31,7 +31,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
     _selectedDay = DateTime(now.year, now.month, now.day);
@@ -99,7 +99,6 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
           controller: _tabController,
           tabs: const [
             Tab(text: 'Month'),
-            Tab(text: 'Day'),
             Tab(text: 'Upcoming'),
           ],
         ),
@@ -109,7 +108,6 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
         physics: const NeverScrollableScrollPhysics(),
         children: [
           _buildMonthTab(),
-          _buildDayTab(),
           _buildAllEventsTab(),
         ],
       ),
@@ -247,77 +245,6 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
         Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
       ],
     ),
-    );
-  }
-
-  // --- Day Tab ---
-  void _prevDay() {
-    setState(() {
-      _selectedDay = _selectedDay.subtract(const Duration(days: 1));
-      _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
-    });
-  }
-
-  void _nextDay() {
-    setState(() {
-      _selectedDay = _selectedDay.add(const Duration(days: 1));
-      _selectedMonth = DateTime(_selectedDay.year, _selectedDay.month);
-    });
-  }
-
-  Widget _buildDayTab() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity != null) {
-          if (details.primaryVelocity! < 0) {
-            _nextDay();
-          } else if (details.primaryVelocity! > 0) {
-            _prevDay();
-          }
-        }
-      },
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: _prevDay,
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _selectedDay,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        _selectedDay = picked;
-                        _selectedMonth = DateTime(picked.year, picked.month);
-                      });
-                    }
-                  },
-                  child: Text(
-                    _formatDayHeader(_selectedDay),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: _nextDay,
-                ),
-              ],
-            ),
-          ),
-          Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
-        ],
-      ),
     );
   }
 
