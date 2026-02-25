@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../utils.dart';
@@ -81,6 +82,17 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
   Widget _buildNextDue() {
     final spec = widget.habit.spec;
+
+    // Negative habits are never due
+    if (_isNegativeSpec(spec)) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.block, color: Colors.green),
+          title: const Text('Avoidance Habit'),
+          subtitle: const Text('Goal: keep occurrences at zero'),
+        ),
+      );
+    }
 
     // Special-case DependencyTagHabitSpec
     if (spec is DependencyTagHabitSpec) {
@@ -192,7 +204,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Strength',
+            Text(
+                _isNegativeSpec(widget.habit.spec) ? 'Avoidance' : 'Strength',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             for (final (label, days) in periods) ...[
@@ -344,6 +357,9 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     return weeks;
   }
 
+  bool _isNegativeSpec(HabitSpec spec) =>
+      spec is NegativeHabitSpec || spec is NegativeTagHabitSpec;
+
   Widget _buildCalendarCell(
       DateTime day, DateTime today, List<DateTime> allCompletions) {
     final isFuture = day.isAfter(today);
@@ -354,6 +370,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final isDue = spec.isDueOnDay(day, completionsUpToDay) ||
         spec.requiredOnDay(day, completionsUpToDay) > 0;
     final completed = spec.completedOnDay(day, allCompletions);
+
+    // Negative habits: inverted calendar cells
+    if (_isNegativeSpec(spec) && !isFuture) {
+      return SizedBox(
+        height: 36,
+        child: Center(child: _buildNegativeCalendarCell(day, completed)),
+      );
+    }
 
     Widget content;
 
@@ -431,6 +455,64 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     );
   }
 
+  Widget _buildNegativeCalendarCell(DateTime day, int completed) {
+    if (completed == 0) {
+      // Avoided — green circle with check (good)
+      return GestureDetector(
+        onTap: () => _addCompletion(day),
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.green.shade100,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.check, size: 16, color: Colors.green.shade700),
+        ),
+      );
+    }
+
+    // Slipped — red circle with X (bad), with count badge if > 1
+    return GestureDetector(
+      onTap: () => _removeCompletion(day),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.red.shade100,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.close, size: 16, color: Colors.red.shade700),
+          ),
+          if (completed > 1)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade600,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                child: Text(
+                  '$completed',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ------------------------------------------------------------------
   // Calendar interactions
   // ------------------------------------------------------------------
@@ -460,7 +542,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     if (confirmed != true || !mounted) return;
 
     await widget.onAddEntryWithTimestamp(widget.habit.fullText, timestamp);
-    if (mounted) setState(() {});
+    if (mounted) {
+      HapticFeedback.mediumImpact();
+      setState(() {});
+    }
   }
 
   Future<void> _removeCompletion(DateTime day) async {

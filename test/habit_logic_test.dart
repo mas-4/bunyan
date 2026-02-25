@@ -121,6 +121,113 @@ void main() {
     });
   });
 
+  group('NegativeHabitSpec strength', () {
+    test('no completions returns 1.0', () {
+      final spec = NegativeHabitSpec();
+      expect(calculateHabitStrength(spec, [], today: DateTime(2025, 3, 10)), 1.0);
+    });
+
+    test('every day completed returns 0.0', () {
+      final spec = NegativeHabitSpec();
+      final today = DateTime(2025, 3, 10);
+      // Occurred every day March 1–10
+      final completions = List.generate(
+        10,
+        (i) => DateTime(2025, 3, 1 + i, 9, 0),
+      );
+      expect(calculateHabitStrength(spec, completions, today: today), 0.0);
+    });
+
+    test('half days completed returns ~0.5', () {
+      final spec = NegativeHabitSpec();
+      final today = DateTime(2025, 3, 10);
+      // Occurred on odd days: March 1, 3, 5, 7, 9 (5 out of 10 days)
+      final completions = [
+        DateTime(2025, 3, 1, 9, 0),
+        DateTime(2025, 3, 3, 9, 0),
+        DateTime(2025, 3, 5, 9, 0),
+        DateTime(2025, 3, 7, 9, 0),
+        DateTime(2025, 3, 9, 9, 0),
+      ];
+      final strength = calculateHabitStrength(spec, completions, today: today);
+      expect(strength, closeTo(0.5, 0.01));
+    });
+
+    test('periodDays window limits calculation', () {
+      final spec = NegativeHabitSpec();
+      final today = DateTime(2025, 3, 10);
+      // Occurred March 1–3, clean March 4–10
+      final completions = [
+        DateTime(2025, 3, 1, 9, 0),
+        DateTime(2025, 3, 2, 9, 0),
+        DateTime(2025, 3, 3, 9, 0),
+      ];
+      // Last 7 days: March 4–10, all clean → 1.0
+      final strength = calculateHabitStrength(
+        spec, completions,
+        periodDays: 7,
+        today: today,
+      );
+      expect(strength, 1.0);
+    });
+
+    test('nextDueDayIndex returns 999', () {
+      final spec = NegativeHabitSpec();
+      expect(nextDueDayIndex(spec, [], today: DateTime(2025, 3, 10)), 999);
+    });
+  });
+
+  group('NegativeTagHabitSpec strength', () {
+    test('no tag occurrences returns 1.0', () {
+      final spec = NegativeTagHabitSpec(tag: '@alcohol');
+      spec.tagOccurrences = [];
+      expect(calculateHabitStrength(spec, [], today: DateTime(2025, 3, 10)), 1.0);
+    });
+
+    test('every day has tag occurrences returns 0.0', () {
+      final spec = NegativeTagHabitSpec(tag: '@alcohol');
+      final today = DateTime(2025, 3, 10);
+      spec.tagOccurrences = List.generate(
+        10,
+        (i) => DateTime(2025, 3, 1 + i, 9, 0),
+      );
+      expect(calculateHabitStrength(spec, [], today: today), 0.0);
+    });
+
+    test('half days with tag occurrences returns ~0.5', () {
+      final spec = NegativeTagHabitSpec(tag: '@alcohol');
+      final today = DateTime(2025, 3, 10);
+      spec.tagOccurrences = [
+        DateTime(2025, 3, 1, 9, 0),
+        DateTime(2025, 3, 3, 9, 0),
+        DateTime(2025, 3, 5, 9, 0),
+        DateTime(2025, 3, 7, 9, 0),
+        DateTime(2025, 3, 9, 9, 0),
+      ];
+      final strength = calculateHabitStrength(spec, [], today: today);
+      expect(strength, closeTo(0.5, 0.01));
+    });
+
+    test('uses tagOccurrences not completions', () {
+      final spec = NegativeTagHabitSpec(tag: '@alcohol');
+      final today = DateTime(2025, 3, 10);
+      // tagOccurrences has entries, completions is empty — should use tagOccurrences
+      spec.tagOccurrences = [
+        DateTime(2025, 3, 5, 9, 0),
+        DateTime(2025, 3, 10, 9, 0),
+      ];
+      final strength = calculateHabitStrength(spec, [], today: today);
+      // 6 days (March 5–10), 2 with occurrences, 4 clean → 4/6
+      expect(strength, closeTo(4 / 6, 0.01));
+    });
+
+    test('nextDueDayIndex returns 999', () {
+      final spec = NegativeTagHabitSpec(tag: '@alcohol');
+      spec.tagOccurrences = [];
+      expect(nextDueDayIndex(spec, [], today: DateTime(2025, 3, 10)), 999);
+    });
+  });
+
   group('extractFirstTag', () {
     test('string with #tag returns the tag', () {
       expect(extractFirstTag('#health retinol'), '#health');

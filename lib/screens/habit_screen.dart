@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../utils.dart';
@@ -76,6 +77,13 @@ class _HabitScreenState extends State<HabitScreen> {
   int _dayOffset = 0; // 0 = today is rightmost column; positive = shifted back
   double _dragAccumulator = 0;
 
+  /// Keys of cells that just got completed, for pop animation.
+  /// Format: "hash:yyyy-mm-dd"
+  final Set<String> _animatingCells = {};
+
+  String _cellKey(String hash, DateTime day) =>
+      '$hash:${day.year}-${day.month}-${day.day}';
+
   @override
   void initState() {
     super.initState();
@@ -134,10 +142,16 @@ class _HabitScreenState extends State<HabitScreen> {
 
     // Pre-build tag→timestamps index (one pass over all entries)
     final depHabits = habits.where((h) => h.spec is DependencyTagHabitSpec).toList();
-    if (depHabits.isNotEmpty) {
-      final neededTags = depHabits
-          .map((h) => (h.spec as DependencyTagHabitSpec).tag.toLowerCase())
-          .toSet();
+    final negTagHabits = habits.where((h) => h.spec is NegativeTagHabitSpec).toList();
+    final allTagHabits = [...depHabits, ...negTagHabits];
+    if (allTagHabits.isNotEmpty) {
+      final neededTags = <String>{};
+      for (final h in depHabits) {
+        neededTags.add((h.spec as DependencyTagHabitSpec).tag.toLowerCase());
+      }
+      for (final h in negTagHabits) {
+        neededTags.add((h.spec as NegativeTagHabitSpec).tag.toLowerCase());
+      }
       final tagTimestamps = <String, List<DateTime>>{};
       for (final tag in neededTags) {
         tagTimestamps[tag] = [];
@@ -161,6 +175,12 @@ class _HabitScreenState extends State<HabitScreen> {
         final timestamps = tagTimestamps[depSpec.tag.toLowerCase()]!;
         timestamps.sort();
         depSpec.tagOccurrences = timestamps;
+      }
+      for (final habit in negTagHabits) {
+        final negSpec = habit.spec as NegativeTagHabitSpec;
+        final timestamps = tagTimestamps[negSpec.tag.toLowerCase()]!;
+        timestamps.sort();
+        negSpec.tagOccurrences = timestamps;
       }
     }
 
@@ -330,7 +350,11 @@ class _HabitScreenState extends State<HabitScreen> {
           // 5 day cells (oldest → newest, left to right)
           for (int i = 4; i >= 0; i--)
             Expanded(
-              child: _buildDayCell(habit, today.subtract(Duration(days: i + _dayOffset))),
+              child: _wrapWithAnimation(
+                habit.hash,
+                today.subtract(Duration(days: i + _dayOffset)),
+                _buildDayCell(habit, today.subtract(Duration(days: i + _dayOffset))),
+              ),
             ),
         ],
       ),
@@ -343,6 +367,21 @@ class _HabitScreenState extends State<HabitScreen> {
     return false;
   }
 
+  Widget _wrapWithAnimation(String hash, DateTime day, Widget child) {
+    final key = _cellKey(hash, day);
+    if (!_animatingCells.contains(key)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 1.4, end: 1.0),
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+      child: child,
+    );
+  }
+
+  bool _isNegativeSpec(HabitSpec spec) =>
+      spec is NegativeHabitSpec || spec is NegativeTagHabitSpec;
+
   Widget _buildDayCell(HabitInfo habit, DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final now = DateTime.now();
@@ -352,6 +391,12 @@ class _HabitScreenState extends State<HabitScreen> {
     if (isFuture) return const SizedBox();
 
     final completed = habit.spec.completedOnDay(day, habit.completions);
+
+    // Negative habits: inverted display
+    if (_isNegativeSpec(habit.spec)) {
+      return _buildNegativeDayCell(habit, day, completed);
+    }
+
     // Only consider completions up to this day so future completions
     // don't mask missed days (e.g. a 1d habit completed today shouldn't
     // make yesterday show "not due").
@@ -436,6 +481,55 @@ class _HabitScreenState extends State<HabitScreen> {
     );
   }
 
+  Widget _buildNegativeDayCell(HabitInfo habit, DateTime day, int completed) {
+    if (completed == 0) {
+      // No occurrences — green check (avoided, good)
+      return Center(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _completeHabit(habit, day),
+          child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 24),
+        ),
+      );
+    }
+
+    if (completed == 1) {
+      // Slipped once — red X
+      return Center(
+        child: GestureDetector(
+          onTap: () => _uncompleteHabit(habit, day),
+          onLongPress: () => _completeHabit(habit, day),
+          child: Icon(Icons.cancel, color: Colors.red.shade400, size: 24),
+        ),
+      );
+    }
+
+    // Multiple slips — red number badge
+    return Center(
+      child: GestureDetector(
+        onTap: () => _uncompleteHabit(habit, day),
+        onLongPress: () => _completeHabit(habit, day),
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.red.shade100,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '$completed',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.red.shade800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _completeHabit(HabitInfo habit, DateTime day) async {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -453,7 +547,16 @@ class _HabitScreenState extends State<HabitScreen> {
     } else {
       await widget.onAddEntry(habit.fullText);
     }
-    if (mounted) setState(() {});
+    if (mounted) {
+      HapticFeedback.mediumImpact();
+      final key = _cellKey(habit.hash, day);
+      _animatingCells.add(key);
+      setState(() {});
+      // Remove animation key after animation completes
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) setState(() => _animatingCells.remove(key));
+      });
+    }
   }
 
   Future<void> _uncompleteHabit(HabitInfo habit, DateTime day) async {

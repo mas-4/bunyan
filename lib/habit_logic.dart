@@ -13,6 +13,12 @@ double calculateHabitStrength(
 }) {
   today ??= DateTime.now();
   final todayStart = DateTime(today.year, today.month, today.day);
+
+  // Negative habits: strength = days WITHOUT occurrences / total days
+  if (spec is NegativeHabitSpec || spec is NegativeTagHabitSpec) {
+    return _calculateNegativeStrength(spec, completions, periodDays: periodDays, todayStart: todayStart);
+  }
+
   final allCompletions = List<DateTime>.from(completions)..sort();
 
   DateTime startDay;
@@ -67,6 +73,54 @@ double calculateHabitStrength(
   return satisfiedDue / totalDue;
 }
 
+double _calculateNegativeStrength(
+  HabitSpec spec,
+  List<DateTime> completions, {
+  required int periodDays,
+  required DateTime todayStart,
+}) {
+  // For NegativeTagHabitSpec, occurrences come from tagOccurrences;
+  // for NegativeHabitSpec, occurrences are the completions themselves.
+  final occurrences = List<DateTime>.from(
+      spec is NegativeTagHabitSpec ? spec.tagOccurrences : completions)
+    ..sort();
+
+  if (occurrences.isEmpty) return 1.0;
+
+  DateTime startDay;
+  if (periodDays == 0) {
+    startDay = DateTime(
+      occurrences.first.year,
+      occurrences.first.month,
+      occurrences.first.day,
+    );
+  } else {
+    startDay = todayStart.subtract(Duration(days: periodDays - 1));
+    final first = DateTime(
+      occurrences.first.year,
+      occurrences.first.month,
+      occurrences.first.day,
+    );
+    if (startDay.isBefore(first)) startDay = first;
+  }
+
+  int totalDays = 0;
+  int cleanDays = 0;
+
+  // Use explicit date construction to avoid DST issues with Duration(days: 1)
+  for (var day = startDay;
+      !day.isAfter(todayStart);
+      day = DateTime(day.year, day.month, day.day + 1)) {
+    totalDays++;
+    final count = occurrences.where((c) =>
+        DateTime(c.year, c.month, c.day) == day).length;
+    if (count == 0) cleanDays++;
+  }
+
+  if (totalDays == 0) return 1.0;
+  return cleanDays / totalDays;
+}
+
 /// Compute the number of days until the habit is next due.
 ///
 /// Returns 0 if due today, 1 if due tomorrow, etc.
@@ -76,6 +130,9 @@ int nextDueDayIndex(
   List<DateTime> completions, {
   DateTime? today,
 }) {
+  // Negative habits are never "due"
+  if (spec is NegativeHabitSpec || spec is NegativeTagHabitSpec) return 999;
+
   today ??= DateTime.now();
   final todayStart = DateTime(today.year, today.month, today.day);
 

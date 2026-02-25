@@ -65,6 +65,16 @@ HabitSpec? parseHabitSpec(String text) {
 }
 
 HabitSpec? _parseSingleSpec(String spec) {
+  // Negative with tag: -@tag or -#tag
+  final negTagMatch = RegExp(r'^-([!@#\^&~+=\\|]\S+)$').firstMatch(spec);
+  if (negTagMatch != null) {
+    return NegativeTagHabitSpec(tag: negTagMatch.group(1)!);
+  }
+  // Standalone negative
+  if (spec == 'negative' || spec == 'neg' || spec == '-') {
+    return NegativeHabitSpec();
+  }
+
   // Dependency with tag: every N TAG (tag starts with a tag leader character)
   final depTagMatch = RegExp(r'^every\s+(\d+)\s+([!@#\^&~+=\\|]\S+)$', caseSensitive: false).firstMatch(spec);
   if (depTagMatch != null) {
@@ -521,6 +531,48 @@ class DiscontinuedHabitSpec extends HabitSpec {
 
   @override
   String get displayLabel => 'ended';
+}
+
+class NegativeHabitSpec extends HabitSpec {
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) => false;
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => 0;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return completions.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'avoid';
+}
+
+class NegativeTagHabitSpec extends HabitSpec {
+  final String tag;
+
+  /// Timestamps of entries matching [tag]. Set externally before calling
+  /// strength calculations (e.g. by the habit screen when building the habit list).
+  List<DateTime> tagOccurrences = [];
+
+  NegativeTagHabitSpec({required this.tag});
+
+  @override
+  bool isDueOnDay(DateTime day, List<DateTime> completions) => false;
+
+  @override
+  int requiredOnDay(DateTime day, List<DateTime> completions) => 0;
+
+  @override
+  int completedOnDay(DateTime day, List<DateTime> completions) {
+    final dayStart = _startOfDay(day);
+    return tagOccurrences.where((c) => _startOfDay(c) == dayStart).length;
+  }
+
+  @override
+  String get displayLabel => 'avoid $tag';
 }
 
 /// Regex matching #when[YYYY-MM-DD H:MM:SS AM/PM]

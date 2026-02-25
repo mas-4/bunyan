@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
@@ -1357,6 +1358,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final doneText = '#done $hash $cleanedText';
 
     await _addEntry(doneText, clearController: false);
+    HapticFeedback.mediumImpact();
     _confettiController.play();
   }
 
