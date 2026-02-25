@@ -857,6 +857,25 @@ const _backupChannel = MethodChannel('com.example.bunyan/backup');
 
 /// Request Android to back up app data to Google cloud.
 /// This notifies the OS that data has changed and should be backed up soon.
+/// Emoji-stripping regex: matches most Unicode emoji ranges.
+final _emojiRegex = RegExp(
+  r'[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|'
+  r'[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|'
+  r'[\u{FE00}-\u{FE0F}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|'
+  r'[\u{1FA70}-\u{1FAFF}]|[\u{200D}]|[\u{20E3}]|[\u{E0020}-\u{E007F}]',
+  unicode: true,
+);
+
+/// Tokenized search: strips emojis, splits query into words, and checks that
+/// every query word appears somewhere in the entry text.
+/// Preserves tag characters (@, #, etc.) so tag searches still work.
+bool matchesSearch(String entryText, String query) {
+  final normEntry = entryText.replaceAll(_emojiRegex, ' ').toLowerCase();
+  final normQuery = query.replaceAll(_emojiRegex, ' ').toLowerCase();
+  final queryWords = normQuery.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  return queryWords.every((word) => normEntry.contains(word));
+}
+
 Future<bool> requestGoogleBackup() async {
   try {
     if (!Platform.isAndroid) return false;

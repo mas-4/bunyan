@@ -1002,7 +1002,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final isFilteringForTodo = lowerTrimmed.contains('#todo');
         final isFilteringForDone = lowerTrimmed.contains('#done');
         final matchingEntries = _entries.where((entry) {
-          final matches = entry.word.toLowerCase().contains(lowerTrimmed);
+          final matches = matchesSearch(entry.word, trimmedText);
           if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
             return false;
           }
@@ -1037,7 +1037,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final isFilteringForTodo = lowerText.contains('#todo');
     final isFilteringForDone = lowerText.contains('#done');
     final matchingEntries = _entries.where((entry) {
-      final matches = entry.word.toLowerCase().contains(lowerText);
+      final matches = matchesSearch(entry.word, text);
       if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
         return false;
       }
