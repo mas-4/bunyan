@@ -78,6 +78,19 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  bool get _isOnCurrentMonth {
+    final now = DateTime.now();
+    return _selectedMonth.year == now.year && _selectedMonth.month == now.month;
+  }
+
+  void _jumpToToday() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedMonth = DateTime(now.year, now.month);
+      _selectedDay = DateTime(now.year, now.month, now.day);
+    });
+  }
+
   void _prevMonth() {
     setState(() {
       _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
@@ -101,6 +114,12 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
             tooltip: 'Calendar help',
             onPressed: _showCalendarHelp,
           ),
+          if (!_isOnCurrentMonth)
+            IconButton(
+              icon: const Icon(Icons.today),
+              tooltip: 'Jump to today',
+              onPressed: _jumpToToday,
+            ),
         ],
         bottom: TabBar(
           controller: _tabController,
