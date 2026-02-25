@@ -95,6 +95,13 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
     return Scaffold(
       appBar: AppBar(
         title: Text('Calendar'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Calendar help',
+            onPressed: _showCalendarHelp,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -398,6 +405,53 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       endDate: ce.calendarDate.add(const Duration(hours: 1)),
     );
     Add2Calendar.addEvent2Cal(event);
+  }
+
+  void _showCalendarHelp() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Calendar Tags', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            const Text(
+              'Use #when to attach a date/time to any entry. '
+              'Typing #when auto-opens a date & time picker.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '#when[2026-02-16 2:30:00 PM]',
+                style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.grey.shade800),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Entries with #when tags appear on the calendar and show '
+              'a button to export to your system calendar.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Calendar-anchored habits (e.g. @habit[every monday]) also '
+              'appear in the Upcoming tab.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildCalendarEntryTile(_CalendarEntry ce, {bool hideWhenTag = false}) {

@@ -10,47 +10,6 @@ class HelpScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _section(context, 'Habits', Icons.loop, [
-            _p('Add @habit[SPEC] to any entry to track it as a habit. '
-                'Completions are just duplicate entries with the same text.'),
-            _sub('Interval (every N days/weeks/months)'),
-            _code('@habit[1d]  @habit[2d]  @habit[7d]\n'
-                '@habit[1w]  @habit[2w]\n'
-                '@habit[1m]  @habit[3m]  @habit[1y]'),
-            _sub('Frequency (N times per period)'),
-            _code('@habit[2/d]  2x per day\n'
-                '@habit[3/w]  3x per week\n'
-                '@habit[2/m]  2x per month'),
-            _sub('Sliding window'),
-            _code('@habit[3 in 7d]  3 times in any 7-day window\n'
-                '@habit[5 in 2w]  5 times in any 2-week window'),
-            _sub('Calendar-anchored'),
-            _code('@habit[every monday]\n'
-                '@habit[every march]\n'
-                '@habit[13th]           13th of every month\n'
-                '@habit[march 13th]     specific date yearly'),
-            _sub('Dependency (hash or tag)'),
-            _code('@habit[after 7 a3f7]  activates after 7\n'
-                '                      entries matching hash a3f7\n'
-                '@habit[every 3 @run]  activates every 3 entries\n'
-                '                      containing tag @run'),
-            _p('Tag dependencies match any entry containing the tag, '
-                'e.g. both "@run long" and "@run base" count toward '
-                '@habit[every 3 @run]. The count resets after each completion.'),
-            _sub('Rescheduling & ending'),
-            _p('To change a schedule, add a new entry with the updated spec. '
-                'The most recent entry per hash determines the current schedule.'),
-            _code('@habit  (no brackets) = habit ended/paused'),
-          ]),
-          const SizedBox(height: 24),
-          _section(context, 'Calendar tags', Icons.calendar_month, [
-            _p('Use #when to attach a date/time to any entry. '
-                'Typing #when auto-opens a date & time picker.'),
-            _code('#when[2026-02-16 2:30:00 PM]'),
-            _p('Entries with #when tags show a calendar icon in the edit screen '
-                'to add the event to your system calendar.'),
-          ]),
-          const SizedBox(height: 24),
           _section(context, 'Todos', Icons.check_circle_outline, [
             _p('Add #todo to any entry to mark it as a task.'),
             _code('buy groceries #todo'),
@@ -58,6 +17,19 @@ class HelpScreen extends StatelessWidget {
                 'Tap the checkmark icon to mark a todo as done — this creates '
                 'a #done entry with a reference hash.'),
             _p('Completed todos show with strikethrough text in the main list.'),
+          ]),
+          const SizedBox(height: 24),
+          _section(context, 'Symptoms', Icons.monitor_heart_outlined, [
+            _p('Add @symptom to any entry to track it as a symptom.'),
+            _code('headache @symptom\n'
+                'nausea @symptom'),
+            _p('When you tap a @symptom entry to view its stats, '
+                'a "Potential Triggers" section appears showing entries '
+                'that occurred in the 24 hours before each symptom occurrence.'),
+            _p('Triggers are ranked using a lift score — entries that appear '
+                'disproportionately often before your symptom (compared to '
+                'their overall frequency) rank highest. Log more entries '
+                'for better accuracy.'),
           ]),
           const SizedBox(height: 24),
           _section(context, 'Content hashes', Icons.tag, [
@@ -74,6 +46,16 @@ class HelpScreen extends StatelessWidget {
             _p('Add #pin to any entry to pin it to the top of the list.'),
             _p('Tag characters (!@#^&~+=\\|) trigger autocomplete suggestions '
                 'from your existing entries.'),
+          ]),
+          const SizedBox(height: 24),
+          _section(context, 'Habits', Icons.loop, [
+            _p('See the Habits screen for full syntax documentation — '
+                'tap the help icon in the Habits app bar.'),
+          ]),
+          const SizedBox(height: 24),
+          _section(context, 'Calendar tags', Icons.calendar_month, [
+            _p('See the Calendar screen for #when tag documentation — '
+                'tap the help icon in the Calendar app bar.'),
           ]),
           const SizedBox(height: 32),
         ],
@@ -107,16 +89,6 @@ class HelpScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(text, style: const TextStyle(fontSize: 14, height: 1.4)),
-    );
-  }
-
-  Widget _sub(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-      ),
     );
   }
 

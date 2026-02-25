@@ -596,34 +596,118 @@ class _HabitScreenState extends State<HabitScreen> {
   void _showLegend() {
     showModalBottomSheet(
       context: context,
-      builder: (_) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Legend', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 22), 'Due — tap to complete'),
-            _legendRow(Icon(Icons.close, color: Colors.red.shade300, size: 22), 'Missed — tap to complete retroactively'),
-            _legendRow(Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 22), 'Not due — tap to complete early'),
-            _legendRow(Container(
-              width: 24, height: 24,
-              decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
-              alignment: Alignment.center,
-              child: Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
-            ), 'Partially done — tap to add, hold to remove'),
-            _legendRow(Container(
-              width: 24, height: 24,
-              decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
-              alignment: Alignment.center,
-              child: Text('2', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
-            ), 'Fully done — tap to add more, hold to remove'),
-            const SizedBox(height: 8),
-            Text('Swipe left/right on the days to scroll through time.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-          ],
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(context).padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 32, height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text('Legend', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              _legendRow(Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400, size: 22), 'Due — tap to complete'),
+              _legendRow(Icon(Icons.close, color: Colors.red.shade300, size: 22), 'Missed — tap to complete retroactively'),
+              _legendRow(Icon(Icons.check_circle_outline, color: Colors.green.shade300, size: 22), 'Not due — tap to complete early'),
+              _legendRow(Container(
+                width: 24, height: 24,
+                decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6)),
+                alignment: Alignment.center,
+                child: Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
+              ), 'Partially done — tap to add, hold to remove'),
+              _legendRow(Container(
+                width: 24, height: 24,
+                decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
+                alignment: Alignment.center,
+                child: Text('2', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+              ), 'Fully done — tap to add more, hold to remove'),
+              const SizedBox(height: 8),
+              Text('Swipe left/right on the days to scroll through time.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              const Divider(height: 32),
+              Text('Habit Syntax', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              _helpText('Add @habit[SPEC] to any entry to track it as a habit. '
+                  'Completions are just duplicate entries with the same text.'),
+              _helpSub('Interval (every N days/weeks/months)'),
+              _helpCode('@habit[1d]  @habit[2d]  @habit[7d]\n'
+                  '@habit[1w]  @habit[2w]\n'
+                  '@habit[1m]  @habit[3m]  @habit[1y]'),
+              _helpSub('Frequency (N times per period)'),
+              _helpCode('@habit[2/d]  2x per day\n'
+                  '@habit[3/w]  3x per week\n'
+                  '@habit[2/m]  2x per month'),
+              _helpSub('Sliding window'),
+              _helpCode('@habit[3 in 7d]  3 times in any 7-day window\n'
+                  '@habit[5 in 2w]  5 times in any 2-week window'),
+              _helpSub('Calendar-anchored'),
+              _helpCode('@habit[every monday]\n'
+                  '@habit[every march]\n'
+                  '@habit[13th]           13th of every month\n'
+                  '@habit[march 13th]     specific date yearly'),
+              _helpSub('Dependency (hash or tag)'),
+              _helpCode('@habit[after 7 a3f7]  activates after 7\n'
+                  '                      entries matching hash a3f7\n'
+                  '@habit[every 3 @run]  activates every 3 entries\n'
+                  '                      containing tag @run'),
+              _helpText('Tag dependencies match any entry containing the tag, '
+                  'e.g. both "@run long" and "@run base" count toward '
+                  '@habit[every 3 @run]. The count resets after each completion.'),
+              _helpSub('Negative (avoid tracking)'),
+              _helpCode('@habit[not 1d]         avoid daily\n'
+                  '@habit[not 3 @smoke]   track avoidance by tag'),
+              _helpSub('Rescheduling & ending'),
+              _helpText('To change a schedule, add a new entry with the updated spec. '
+                  'The most recent entry per hash determines the current schedule.'),
+              _helpCode('@habit  (no brackets) = habit ended/paused'),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _helpText(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
+    );
+  }
+
+  Widget _helpSub(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  Widget _helpCode(String text) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.grey.shade800, height: 1.5),
       ),
     );
   }
@@ -658,6 +742,11 @@ class _HabitScreenState extends State<HabitScreen> {
         title: const Text('Habits'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Legend',
+            onPressed: _showLegend,
+          ),
+          IconButton(
             icon: Icon(_sortModeIcons[_sortMode] ?? Icons.sort),
             tooltip: _sortModeLabels[_sortMode] ?? 'Sort',
             onPressed: _cycleSortMode,
@@ -671,11 +760,6 @@ class _HabitScreenState extends State<HabitScreen> {
               setState(() => _filterDueOnly = !_filterDueOnly);
               saveBoolSetting('habitFilterDueOnly', _filterDueOnly);
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'Legend',
-            onPressed: _showLegend,
           ),
         ],
       ),
