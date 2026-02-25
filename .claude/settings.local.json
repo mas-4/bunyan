@@ -5,7 +5,11 @@
       "Bash(flutter pub get:*)",
       "Bash(flutter pub add:*)",
       "WebSearch",
-      "Bash(flutter test:*)"
+      "Bash(flutter test:*)",
+      "Bash(flutter upgrade:*)",
+      "Bash(sdkmanager:*)",
+      "Bash(\"C:/Users/malan/AppData/Local/Android/Sdk/cmdline-tools/latest/bin/sdkmanager.bat\" --install \"build-tools;36.0.0\" \"platforms;android-36\")",
+      "Bash(flutter doctor:*)"
     ],
     "deny": [],
     "ask": []
