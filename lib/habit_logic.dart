@@ -143,6 +143,49 @@ int nextDueDayIndex(
   return 999;
 }
 
+/// Calculate the current streak of consecutive due-days completed,
+/// walking backwards from today.
+///
+/// Off-days (where the habit isn't due) are skipped and don't break the streak.
+/// Returns 0 if the most recent due day was missed.
+int calculateCurrentStreak(
+  HabitSpec spec,
+  List<DateTime> completions, {
+  DateTime? today,
+}) {
+  // Negative habits don't have streaks
+  if (spec is NegativeHabitSpec || spec is NegativeTagHabitSpec) return 0;
+
+  today ??= DateTime.now();
+  final todayStart = DateTime(today.year, today.month, today.day);
+
+  final allCompletions = List<DateTime>.from(completions)..sort();
+  if (allCompletions.isEmpty) return 0;
+
+  int streak = 0;
+
+  for (int i = 0; i <= 366; i++) {
+    final day = DateTime(todayStart.year, todayStart.month, todayStart.day - i);
+    final completionsUpToDay = allCompletions
+        .where((c) => DateTime(c.year, c.month, c.day).compareTo(day) <= 0)
+        .toList();
+    final isDue = spec.isDueOnDay(day, completionsUpToDay);
+
+    if (!isDue) continue; // Skip off-days
+
+    final completed = spec.completedOnDay(day, allCompletions);
+    if (completed > 0) {
+      streak++;
+    } else if (day == todayStart) {
+      continue; // Today not yet completed — don't break streak
+    } else {
+      break; // Streak broken
+    }
+  }
+
+  return streak;
+}
+
 /// Extract the first #tag from a habit's display name.
 ///
 /// Returns null if no tag is found.

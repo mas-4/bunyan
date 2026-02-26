@@ -55,10 +55,9 @@ class EntryStatsScreen extends StatelessWidget {
 
     final weekCounts = <DateTime, int>{};
     for (final entry in entries) {
-      // Get the start of the week (Monday)
-      final date = entry.timestamp;
-      final weekStart = date.subtract(Duration(days: date.weekday - 1));
-      final weekKey = DateTime(weekStart.year, weekStart.month, weekStart.day);
+      // Get the start of the week (Monday) using DateTime constructor to avoid DST issues
+      final d = DateTime(entry.timestamp.year, entry.timestamp.month, entry.timestamp.day);
+      final weekKey = DateTime(d.year, d.month, d.day - (d.weekday - 1));
       weekCounts[weekKey] = (weekCounts[weekKey] ?? 0) + 1;
     }
 
@@ -68,15 +67,15 @@ class EntryStatsScreen extends StatelessWidget {
     final sortedKeys = weekCounts.keys.toList()..sort();
     final firstWeek = sortedKeys.first;
     final now = DateTime.now();
-    final currentWeekStart = now.subtract(Duration(days: now.weekday - 1));
-    final lastWeek = DateTime(currentWeekStart.year, currentWeekStart.month, currentWeekStart.day);
+    final todayDate = DateTime(now.year, now.month, now.day);
+    final lastWeek = DateTime(todayDate.year, todayDate.month, todayDate.day - (now.weekday - 1));
 
     // Fill in all weeks from first to current, including gaps
     final result = <MapEntry<DateTime, int>>[];
     var week = firstWeek;
     while (!week.isAfter(lastWeek)) {
       result.add(MapEntry(week, weekCounts[week] ?? 0));
-      week = week.add(Duration(days: 7));
+      week = DateTime(week.year, week.month, week.day + 7);
     }
 
     return result;

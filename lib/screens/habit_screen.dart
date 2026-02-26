@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -77,6 +80,9 @@ class _HabitScreenState extends State<HabitScreen> {
   int _dayOffset = 0; // 0 = today is rightmost column; positive = shifted back
   double _dragAccumulator = 0;
 
+  late ConfettiController _confettiController;
+  late ConfettiController _fireworksController;
+
   /// Keys of cells that just got completed, for pop animation.
   /// Format: "hash:yyyy-mm-dd"
   final Set<String> _animatingCells = {};
@@ -87,6 +93,8 @@ class _HabitScreenState extends State<HabitScreen> {
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(duration: const Duration(milliseconds: 800));
+    _fireworksController = ConfettiController(duration: const Duration(seconds: 2));
     if (!_filterLoaded) {
       loadBoolSetting('habitFilterDueOnly').then((value) {
         if (mounted && value != _filterDueOnly) {
@@ -302,6 +310,7 @@ class _HabitScreenState extends State<HabitScreen> {
 
   Widget _buildHabitRow(HabitInfo habit) {
     final today = DateTime.now();
+    final streak = calculateCurrentStreak(habit.spec, habit.completions, today: today);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -353,7 +362,7 @@ class _HabitScreenState extends State<HabitScreen> {
               child: _wrapWithAnimation(
                 habit.hash,
                 today.subtract(Duration(days: i + _dayOffset)),
-                _buildDayCell(habit, today.subtract(Duration(days: i + _dayOffset))),
+                _buildDayCell(habit, today.subtract(Duration(days: i + _dayOffset)), streak: streak),
               ),
             ),
         ],
@@ -368,9 +377,10 @@ class _HabitScreenState extends State<HabitScreen> {
   }
 
   Widget _wrapWithAnimation(String hash, DateTime day, Widget child) {
-    final key = _cellKey(hash, day);
-    if (!_animatingCells.contains(key)) return child;
+    final cellKey = _cellKey(hash, day);
+    if (!_animatingCells.contains(cellKey)) return child;
     return TweenAnimationBuilder<double>(
+      key: ValueKey('anim_$cellKey'),
       tween: Tween(begin: 1.4, end: 1.0),
       duration: const Duration(milliseconds: 350),
       curve: Curves.elasticOut,
@@ -382,7 +392,7 @@ class _HabitScreenState extends State<HabitScreen> {
   bool _isNegativeSpec(HabitSpec spec) =>
       spec is NegativeHabitSpec || spec is NegativeTagHabitSpec;
 
-  Widget _buildDayCell(HabitInfo habit, DateTime day) {
+  Widget _buildDayCell(HabitInfo habit, DateTime day, {int streak = 0}) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -439,12 +449,14 @@ class _HabitScreenState extends State<HabitScreen> {
         );
       }
 
-      // Single-per-day: green checkmark
+      // Single-per-day: flame if streak >= 5, otherwise green checkmark
       return Center(
         child: GestureDetector(
           onTap: () => _completeHabit(habit, day),
           onLongPress: () => _uncompleteHabit(habit, day),
-          child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 24),
+          child: streak >= 5
+              ? Icon(Icons.local_fire_department, color: Colors.orange, size: 24)
+              : Icon(Icons.check_circle, color: Colors.green.shade600, size: 24),
         ),
       );
     }
@@ -551,6 +563,14 @@ class _HabitScreenState extends State<HabitScreen> {
       HapticFeedback.mediumImpact();
       final key = _cellKey(habit.hash, day);
       _animatingCells.add(key);
+      _confettiController.play();
+
+      // Check if this completion brings the streak to exactly 5
+      final newStreak = calculateCurrentStreak(habit.spec, habit.completions);
+      if (newStreak == 5) {
+        _fireworksController.play();
+      }
+
       setState(() {});
       // Remove animation key after animation completes
       Future.delayed(const Duration(milliseconds: 400), () {
@@ -733,6 +753,13 @@ class _HabitScreenState extends State<HabitScreen> {
   }
 
   @override
+  void dispose() {
+    _confettiController.dispose();
+    _fireworksController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final habits = _buildHabitList();
     final listItems = _buildListItems(habits);
@@ -763,60 +790,97 @@ class _HabitScreenState extends State<HabitScreen> {
           ),
         ],
       ),
-      body: habits.isEmpty
-          ? Center(
-              child: Text(
-                _filterDueOnly
-                    ? 'No habits due right now!'
-                    : 'No habits yet.\nAdd entries with @habit[SPEC] to get started.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            )
-          : GestureDetector(
-              onHorizontalDragStart: (_) => _dragAccumulator = 0,
-              onHorizontalDragUpdate: (details) {
-                _dragAccumulator += details.delta.dx;
-                const threshold = 40.0;
-                if (_dragAccumulator > threshold) {
-                  // Dragged right → go back in time
-                  setState(() => _dayOffset += 1);
-                  _dragAccumulator = 0;
-                } else if (_dragAccumulator < -threshold) {
-                  // Dragged left → go forward in time
-                  setState(() => _dayOffset = (_dayOffset - 1).clamp(0, _dayOffset));
-                  _dragAccumulator = 0;
-                }
-              },
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: _buildDayHeaders(),
+      body: Stack(
+        children: [
+          habits.isEmpty
+              ? Center(
+                  child: Text(
+                    _filterDueOnly
+                        ? 'No habits due right now!'
+                        : 'No habits yet.\nAdd entries with @habit[SPEC] to get started.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
                   ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24),
-                      itemCount: listItems.length,
-                      itemBuilder: (context, index) {
-                        final item = listItems[index];
-                        if (item.isHeader) {
-                          return _buildSectionHeader(item.header!);
-                        }
-                        return Column(
-                          children: [
-                            _buildHabitRow(item.habit!),
-                            if (index < listItems.length - 1 && !listItems[index + 1].isHeader)
-                              const Divider(height: 1),
-                          ],
-                        );
-                      },
-                    ),
+                )
+              : GestureDetector(
+                  onHorizontalDragStart: (_) => _dragAccumulator = 0,
+                  onHorizontalDragUpdate: (details) {
+                    _dragAccumulator += details.delta.dx;
+                    const threshold = 40.0;
+                    if (_dragAccumulator > threshold) {
+                      // Dragged right → go back in time
+                      setState(() => _dayOffset += 1);
+                      _dragAccumulator = 0;
+                    } else if (_dragAccumulator < -threshold) {
+                      // Dragged left → go forward in time
+                      setState(() => _dayOffset = (_dayOffset - 1).clamp(0, _dayOffset));
+                      _dragAccumulator = 0;
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: _buildDayHeaders(),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24),
+                          itemCount: listItems.length,
+                          itemBuilder: (context, index) {
+                            final item = listItems[index];
+                            if (item.isHeader) {
+                              return _buildSectionHeader(item.header!);
+                            }
+                            return Column(
+                              children: [
+                                _buildHabitRow(item.habit!),
+                                if (index < listItems.length - 1 && !listItems[index + 1].isHeader)
+                                  const Divider(height: 1),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+          // Confetti on every completion
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: pi / 2,
+              blastDirectionality: BlastDirectionality.explosive,
+              maxBlastForce: 15,
+              minBlastForce: 5,
+              emissionFrequency: 0.06,
+              numberOfParticles: 10,
+              gravity: 0.3,
             ),
+          ),
+          // Fireworks on 5-day streak
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _fireworksController,
+              blastDirectionality: BlastDirectionality.explosive,
+              maxBlastForce: 30,
+              minBlastForce: 10,
+              emissionFrequency: 0.08,
+              numberOfParticles: 30,
+              gravity: 0.1,
+              colors: const [
+                Colors.orange,
+                Colors.red,
+                Colors.yellow,
+                Colors.amber,
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

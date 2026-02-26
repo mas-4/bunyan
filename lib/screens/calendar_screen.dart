@@ -27,6 +27,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
   late DateTime _selectedDay;
   List<_CalendarEntry> _calendarEntries = [];
   Map<String, List<_CalendarEntry>> _entriesByDate = {};
+  int _slideDirection = 1; // 1 = forward, -1 = back
 
   @override
   void initState() {
@@ -93,12 +94,14 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
 
   void _prevMonth() {
     setState(() {
+      _slideDirection = -1;
       _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
     });
   }
 
   void _nextMonth() {
     setState(() {
+      _slideDirection = 1;
       _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
     });
   }
@@ -168,7 +171,7 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
       },
       child: Column(
       children: [
-        // Month header
+        // Month header (stays static)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
@@ -183,92 +186,117 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
             ],
           ),
         ),
-        // Weekday labels
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-                .map((d) => Expanded(
-                      child: Center(
-                        child: Text(d, style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                    ))
-                .toList(),
-          ),
-        ),
-        const SizedBox(height: 4),
-        // Day grid
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: GridView.count(
-            crossAxisCount: 7,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: List.generate(startWeekday + daysInMonth, (index) {
-              if (index < startWeekday) {
-                return const SizedBox();
-              }
-              final day = index - startWeekday + 1;
-              final date = DateTime(year, month, day);
-              final hasEntries = _entriesForDay(date).isNotEmpty;
-              final isSelected = _isSameDay(date, _selectedDay);
-              final isToday = _isSameDay(date, today);
-
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedDay = date;
-                  });
-                },
-                child: Container(
-                  margin: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Theme.of(context).colorScheme.primary.withAlpha(50)
-                        : null,
-                    border: isToday
-                        ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
-                        : null,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '$day',
-                        style: TextStyle(
-                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      if (hasEntries)
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                    ],
+        // Animated month content
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, animation) {
+              // Determine slide direction based on whether this is the incoming or outgoing child
+              final isIncoming = child.key == ValueKey(_selectedMonth);
+              final beginOffset = isIncoming
+                  ? Offset(_slideDirection.toDouble(), 0)
+                  : Offset(-_slideDirection.toDouble(), 0);
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: beginOffset,
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeInOut)),
+                child: child,
+              );
+            },
+            child: Column(
+              key: ValueKey(_selectedMonth),
+              children: [
+                // Weekday labels
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                        .map((d) => Expanded(
+                              child: Center(
+                                child: Text(d, style: Theme.of(context).textTheme.bodySmall),
+                              ),
+                            ))
+                        .toList(),
                   ),
                 ),
-              );
-            }),
-          ),
-        ),
-        const Divider(),
-        // Selected day entries
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _formatDayHeader(_selectedDay),
-              style: Theme.of(context).textTheme.titleSmall,
+                const SizedBox(height: 4),
+                // Day grid
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: GridView.count(
+                    crossAxisCount: 7,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: List.generate(startWeekday + daysInMonth, (index) {
+                      if (index < startWeekday) {
+                        return const SizedBox();
+                      }
+                      final day = index - startWeekday + 1;
+                      final date = DateTime(year, month, day);
+                      final hasEntries = _entriesForDay(date).isNotEmpty;
+                      final isSelected = _isSameDay(date, _selectedDay);
+                      final isToday = _isSameDay(date, today);
+
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedDay = date;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary.withAlpha(50)
+                                : null,
+                            border: isToday
+                                ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2)
+                                : null,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '$day',
+                                style: TextStyle(
+                                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              if (hasEntries)
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const Divider(),
+                // Selected day entries
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _formatDayHeader(_selectedDay),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                ),
+                Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
+              ],
             ),
           ),
         ),
-        Expanded(child: _buildEntryList(_entriesForDay(_selectedDay))),
       ],
     ),
     );
