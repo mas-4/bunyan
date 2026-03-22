@@ -32,14 +32,23 @@ class DateTimeFormatter {
     final today = DateTime(tmp.year, tmp.month, tmp.day);
     final calendarDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
 
-    final daysAgo = today.difference(calendarDate).inDays;
+    final days = today.difference(calendarDate).inDays;
 
-    if (daysAgo == 0) {
-      return 'Today';
-    } else if (daysAgo == 1) {
-      return 'Yesterday';
+    if (days == 0) return 'Today';
+    if (days == 1) return 'Yesterday';
+    if (days < 7) return '${days}d ago';
+    if (days < 30) {
+      final weeks = days ~/ 7;
+      return '${weeks}w ago';
     }
-    return '${daysAgo}d ago';
+    if (days < 365) {
+      final months = days ~/ 30;
+      return '${months}mo ago';
+    }
+    final years = days ~/ 365;
+    final remainingMonths = (days % 365) ~/ 30;
+    if (remainingMonths == 0) return '${years}y ago';
+    return '${years}y ${remainingMonths}mo ago';
   }
 }
 

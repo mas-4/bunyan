@@ -148,6 +148,34 @@ class _HabitScreenState extends State<HabitScreen> {
 
     var habits = habitMap.values.toList();
 
+    // Pre-build hash→timestamps index for hash-based dependency habits
+    final hashDepHabits = habits.where((h) => h.spec is DependencyHabitSpec).toList();
+    if (hashDepHabits.isNotEmpty) {
+      final neededHashes = <String>{};
+      for (final h in hashDepHabits) {
+        neededHashes.add((h.spec as DependencyHabitSpec).dependencyHash.toLowerCase());
+      }
+
+      final hashTimestamps = <String, List<DateTime>>{};
+      for (final hash in neededHashes) {
+        hashTimestamps[hash] = [];
+      }
+
+      for (final entry in widget.entries) {
+        final entryHash = generateContentHash(entry.word).toLowerCase();
+        if (hashTimestamps.containsKey(entryHash)) {
+          hashTimestamps[entryHash]!.add(entry.timestamp);
+        }
+      }
+
+      for (final habit in hashDepHabits) {
+        final depSpec = habit.spec as DependencyHabitSpec;
+        final timestamps = hashTimestamps[depSpec.dependencyHash.toLowerCase()]!;
+        timestamps.sort();
+        depSpec.hashOccurrences = timestamps;
+      }
+    }
+
     // Pre-build tag→timestamps index (one pass over all entries)
     final depHabits = habits.where((h) => h.spec is DependencyTagHabitSpec).toList();
     final negTagHabits = habits.where((h) => h.spec is NegativeTagHabitSpec).toList();

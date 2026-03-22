@@ -170,6 +170,47 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     return sorted;
   }
 
+  /// Parse composite entries (e.g. "Restaurant: pasta, salad, drink")
+  /// and return widgets with + buttons for each subcomponent.
+  List<Widget> _buildSubcomponents() {
+    final text = _wordController.text.trim();
+    final colonIndex = text.indexOf(':');
+    if (colonIndex < 0 || colonIndex == text.length - 1) return [];
+
+    final afterColon = text.substring(colonIndex + 1).trim();
+    if (afterColon.isEmpty) return [];
+
+    final parts = afterColon.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (parts.length < 2) return [];
+
+    final prefix = text.substring(0, colonIndex).trim();
+
+    return [
+      Divider(),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.0),
+        child: Text('Components', style: Theme.of(context).textTheme.titleMedium),
+      ),
+      ...parts.map((part) => ListTile(
+        dense: true,
+        title: Text(part),
+        trailing: IconButton(
+          icon: Icon(Icons.add_circle_outline),
+          tooltip: 'Add "$prefix: $part"',
+          onPressed: () {
+            widget.onAddRelated('$prefix: $part', _selectedDateTime);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Added: $prefix: $part'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          },
+        ),
+      )),
+    ];
+  }
+
   void _checkForTags() {
     final text = _wordController.text;
 
@@ -381,6 +422,7 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
               ],
             ),
           ),
+          ..._buildSubcomponents(),
           Divider(),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.0),

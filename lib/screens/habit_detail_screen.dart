@@ -27,13 +27,9 @@ class HabitDetailScreen extends StatefulWidget {
 }
 
 class _HabitDetailScreenState extends State<HabitDetailScreen> {
-  late DateTime _calendarMonth;
-
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _calendarMonth = DateTime(now.year, now.month, 1);
   }
 
   // ------------------------------------------------------------------
@@ -268,250 +264,176 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   // ------------------------------------------------------------------
 
   Widget _buildCalendar() {
-    final year = _calendarMonth.year;
-    final month = _calendarMonth.month;
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final firstWeekday = DateTime(year, month, 1).weekday; // 1=Mon
     final today = _startOfDay(DateTime.now());
+    final allCompletions = List<DateTime>.from(widget.habit.completions)..sort();
 
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
+    // Build a set of completion counts by day for quick lookup
+    final completionCounts = <DateTime, int>{};
+    for (final c in allCompletions) {
+      final d = _startOfDay(c);
+      completionCounts[d] = (completionCounts[d] ?? 0) + 1;
+    }
+
+    // Number of weeks to show (roughly 6 months)
+    const totalWeeks = 26;
+
+    // Find the Sunday that ends the current week (today's week)
+    // weekday: 1=Mon .. 7=Sun
+    final endDate = today.add(Duration(days: 7 - today.weekday));
+    final startDate = endDate.subtract(Duration(days: totalWeeks * 7 - 1));
+
+    // Build month labels with their column positions
+    final monthLabels = <({String label, int col})>[];
+    int? lastMonth;
+    for (int col = 0; col < totalWeeks; col++) {
+      final weekStart = startDate.add(Duration(days: col * 7));
+      if (weekStart.month != lastMonth) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        monthLabels.add((label: months[weekStart.month - 1], col: col));
+        lastMonth = weekStart.month;
+      }
+    }
+
+    const double cellSize = 14;
+    const double cellGap = 3;
+    const double labelWidth = 20; // width for day-of-week labels
+
+    final scrollController = ScrollController(
+      initialScrollOffset: (totalWeeks * (cellSize + cellGap)).toDouble(),
+    );
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with arrows
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: () => setState(() {
-                    _calendarMonth = DateTime(year, month - 1, 1);
-                  }),
-                ),
-                Text(
-                  '${months[month - 1]} $year',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: () => setState(() {
-                    _calendarMonth = DateTime(year, month + 1, 1);
-                  }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Weekday headers
-            Row(
-              children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-                  .map((d) => Expanded(
-                        child: Center(
-                          child: Text(d,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[600])),
+            // Month labels row
+            SizedBox(
+              height: 16,
+              child: Row(
+                children: [
+                  SizedBox(width: labelWidth),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: ScrollController(
+                        initialScrollOffset: (totalWeeks * (cellSize + cellGap)).toDouble(),
+                      ),
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: totalWeeks * (cellSize + cellGap),
+                        child: Stack(
+                          children: monthLabels.map((m) => Positioned(
+                            left: m.col * (cellSize + cellGap),
+                            child: Text(m.label,
+                              style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                          )).toList(),
                         ),
-                      ))
-                  .toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 4),
-            // Day grid
-            ..._buildCalendarWeeks(
-                year, month, daysInMonth, firstWeekday, today),
+            // Heatmap grid
+            SizedBox(
+              height: 7 * (cellSize + cellGap) - cellGap,
+              child: Row(
+                children: [
+                  // Day-of-week labels
+                  SizedBox(
+                    width: labelWidth,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: ['M', '', 'W', '', 'F', '', 'S']
+                          .map((d) => SizedBox(
+                                height: cellSize,
+                                child: Center(
+                                  child: Text(d,
+                                      style: TextStyle(fontSize: 9, color: Colors.grey[600])),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  // Scrollable grid
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: List.generate(totalWeeks, (col) {
+                          return Padding(
+                            padding: EdgeInsets.only(right: cellGap),
+                            child: Column(
+                              children: List.generate(7, (row) {
+                                final day = startDate.add(Duration(days: col * 7 + row));
+                                final isFuture = day.isAfter(today);
+                                final count = completionCounts[_startOfDay(day)] ?? 0;
+
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: row < 6 ? cellGap : 0),
+                                  child: GestureDetector(
+                                    onTap: isFuture ? null : () {
+                                      if (count > 0) {
+                                        _removeCompletion(day);
+                                      } else {
+                                        _addCompletion(day);
+                                      }
+                                    },
+                                    child: Tooltip(
+                                      message: '${DateTimeFormatter(day).date}${count > 0 ? ' ($count)' : ''}',
+                                      child: Container(
+                                        width: cellSize,
+                                        height: cellSize,
+                                        decoration: BoxDecoration(
+                                          color: _heatmapColor(day, today, count),
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _buildCalendarWeeks(
-      int year, int month, int daysInMonth, int firstWeekday, DateTime today) {
-    final weeks = <Widget>[];
-    final allCompletions = List<DateTime>.from(widget.habit.completions)..sort();
-    var dayNum = 1;
+  Color _heatmapColor(DateTime day, DateTime today, int count) {
+    if (day.isAfter(today)) return Colors.grey.shade100;
 
-    final offset = firstWeekday - 1;
+    final isNegative = _isNegativeSpec(widget.habit.spec);
 
-    while (dayNum <= daysInMonth) {
-      final cells = <Widget>[];
-      for (int col = 0; col < 7; col++) {
-        final cellIndex = (weeks.length * 7) + col;
-        if (cellIndex < offset || dayNum > daysInMonth) {
-          cells.add(const Expanded(child: SizedBox(height: 36)));
-          continue;
-        }
-
-        final day = DateTime(year, month, dayNum);
-        cells.add(Expanded(child: _buildCalendarCell(day, today, allCompletions)));
-        dayNum++;
-      }
-      weeks.add(Row(children: cells));
+    if (isNegative) {
+      // Negative habits: green = no occurrences (good), red = occurred (bad)
+      if (count == 0) return Colors.green.shade200;
+      if (count == 1) return Colors.red.shade200;
+      return Colors.red.shade400;
     }
-    return weeks;
+
+    if (count == 0) return Colors.grey.shade200;
+    if (count == 1) return Colors.green.shade300;
+    if (count == 2) return Colors.green.shade500;
+    return Colors.green.shade700;
   }
 
   bool _isNegativeSpec(HabitSpec spec) =>
       spec is NegativeHabitSpec || spec is NegativeTagHabitSpec;
 
-  Widget _buildCalendarCell(
-      DateTime day, DateTime today, List<DateTime> allCompletions) {
-    final isFuture = day.isAfter(today);
-    final spec = widget.habit.spec;
-
-    final completionsUpToDay =
-        allCompletions.where((c) => _startOfDay(c).compareTo(day) <= 0).toList();
-    final isDue = spec.isDueOnDay(day, completionsUpToDay) ||
-        spec.requiredOnDay(day, completionsUpToDay) > 0;
-    final completed = spec.completedOnDay(day, allCompletions);
-
-    // Negative habits: inverted calendar cells
-    if (_isNegativeSpec(spec) && !isFuture) {
-      return SizedBox(
-        height: 36,
-        child: Center(child: _buildNegativeCalendarCell(day, completed)),
-      );
-    }
-
-    Widget content;
-
-    if (completed > 0) {
-      // Completed — green circle with checkmark, tappable to remove
-      content = GestureDetector(
-        onTap: isFuture ? null : () => _removeCompletion(day),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: Colors.green.shade100,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(Icons.check, size: 16, color: Colors.green.shade700),
-            ),
-            if (completed > 1)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade600,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                  child: Text(
-                    '$completed',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    } else if (isFuture && isDue) {
-      // Future due — faint outline circle (no interaction)
-      content = Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.shade300, width: 1.5),
-        ),
-        alignment: Alignment.center,
-        child: Text('${day.day}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-      );
-    } else if (isFuture) {
-      // Future, not due — grey number (no interaction)
-      content = Text(
-        '${day.day}',
-        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-      );
-    } else {
-      // Past/today, no completion — plain day number, tappable to add
-      content = GestureDetector(
-        onTap: () => _addCompletion(day),
-        child: Text(
-          '${day.day}',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 36,
-      child: Center(child: content),
-    );
-  }
-
-  Widget _buildNegativeCalendarCell(DateTime day, int completed) {
-    if (completed == 0) {
-      // Avoided — green circle with check (good)
-      return GestureDetector(
-        onTap: () => _addCompletion(day),
-        child: Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: Colors.green.shade100,
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Icon(Icons.check, size: 16, color: Colors.green.shade700),
-        ),
-      );
-    }
-
-    // Slipped — red circle with X (bad), with count badge if > 1
-    return GestureDetector(
-      onTap: () => _removeCompletion(day),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: Colors.red.shade100,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Icon(Icons.close, size: 16, color: Colors.red.shade700),
-          ),
-          if (completed > 1)
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade600,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                child: Text(
-                  '$completed',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   // ------------------------------------------------------------------
   // Calendar interactions

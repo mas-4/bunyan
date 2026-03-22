@@ -433,12 +433,22 @@ class DependencyHabitSpec extends HabitSpec {
   final int requiredCount;
   final String dependencyHash;
 
+  /// Timestamps of entries whose content hash matches [dependencyHash].
+  /// Set externally before calling [isDueOnDay].
+  List<DateTime> hashOccurrences = [];
+
   DependencyHabitSpec({required this.requiredCount, required this.dependencyHash});
 
   @override
   bool isDueOnDay(DateTime day, List<DateTime> completions) {
-    // Actual dependency check requires external data; default true
-    return true;
+    if (hashOccurrences.isEmpty) return false;
+    if (completions.isEmpty) return hashOccurrences.length >= requiredCount;
+
+    final lastCompletion = completions.reduce((a, b) => a.isAfter(b) ? a : b);
+    final sinceLastCompletion = hashOccurrences
+        .where((t) => t.isAfter(lastCompletion))
+        .length;
+    return sinceLastCompletion >= requiredCount;
   }
 
   @override
