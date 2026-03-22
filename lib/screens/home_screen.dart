@@ -61,6 +61,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   // New groups default to collapsed via the build logic
   final Set<int> _expandedGroups = {};
 
+  // For scroll-to-entry from unique view
+  WordEntry? _scrollToTarget;
+  final GlobalKey _scrollTargetKey = GlobalKey();
+
   // Generate 8-char hash from text + timestamp for todo tracking
   String _generateTodoHash(String text, DateTime timestamp) {
     final combined = '$text${timestamp.toIso8601String()}';
@@ -473,6 +477,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   Widget _buildEntry(WordEntry entry, int index) {
+    final isScrollTarget = _scrollToTarget != null &&
+        entry.timestamp == _scrollToTarget!.timestamp &&
+        entry.word == _scrollToTarget!.word;
     final dt = DateTimeFormatter(entry.timestamp);
     final count = _cache.getWordCount(entry.word);
     final pinned = _isPinned(entry);
@@ -553,7 +560,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       leading = _pinnedLeading(entry);
     }
 
-    return _wrapPinned(entry, Dismissible(
+    final result = _wrapPinned(entry, Dismissible(
       key: Key('${entry.timestamp.millisecondsSinceEpoch}_${entry.word.hashCode}'),
       dismissThresholds: const {
         DismissDirection.endToStart: 0.9,
@@ -611,20 +618,44 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               : null,
         ),
         subtitle: Text('${dt.time} · $hash'),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
-            if (count > 1)
-              Text(
-                'x$count',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+        trailing: (_hasSearchText && !_showAllMatches)
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+                      if (count > 1)
+                        Text(
+                          'x$count',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        ),
+                    ],
+                  ),
+                  SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(Icons.my_location, size: 20),
+                    tooltip: 'Scroll to most recent',
+                    onPressed: () => _locateEntry(entry),
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(dt.daysAgo, style: Theme.of(context).textTheme.bodySmall),
+                  if (count > 1)
+                    Text(
+                      'x$count',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    ),
+                ],
               ),
-          ],
-        ),
         onTap: () => (_hasSearchText && !_showAllMatches)
             ? _bulkEditText(entry.word)
             : _editEntry(entry),
@@ -633,6 +664,17 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
             : _enterBulkEditMode(entry),
       ),
     ));
+
+    if (isScrollTarget) {
+      return Container(
+        key: _scrollTargetKey,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        ),
+        child: result,
+      );
+    }
+    return result;
   }
 
   /// Groups consecutive entries within the configured window of each other.
@@ -1070,6 +1112,104 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
       _displayEntries = _withPinnedFirst(uniqueList);
       _showSuggestions = false;
       _hasSearchText = true;
+    });
+  }
+
+  void _locateEntry(WordEntry entry) {
+    // Find the most recent instance of this word in the full entries list
+    final key = entry.word.split(':')[0].trim().toLowerCase();
+    WordEntry? target;
+    for (final e in _entries) {
+      if (e.word.split(':')[0].trim().toLowerCase() == key) {
+        if (target == null || e.timestamp.isAfter(target.timestamp)) {
+          target = e;
+        }
+      }
+    }
+    if (target == null) return;
+
+    _scrollToTarget = target;
+    _controller.removeListener(_filterEntries);
+    _controller.clear();
+    _controller.addListener(_filterEntries);
+
+    final unfilteredEntries = _withPinnedFirst(
+      _entries.where((e) => !_isDoneEntry(e)).toList(),
+    );
+
+    // Expand the group containing the target so the entry is visible
+    final groups = _groupEntriesByTime(unfilteredEntries);
+    for (final group in groups) {
+      if (group.any((e) => e.timestamp == target!.timestamp && e.word == target.word)) {
+        _expandedGroups.add(_groupKey(group));
+        break;
+      }
+    }
+
+    setState(() {
+      _displayEntries = unfilteredEntries;
+      _showSuggestions = false;
+      _showAllMatches = false;
+      _hasSearchText = false;
+    });
+
+    // Calculate the flat list index to estimate scroll position
+    final flatGroups = _groupEntriesByTime(unfilteredEntries);
+    int flatIndex = 0;
+    DateTime? calcLastDate;
+    bool found = false;
+    for (final group in flatGroups) {
+      final groupDate = DateTime(
+        group.first.timestamp.year,
+        group.first.timestamp.month,
+        group.first.timestamp.day,
+      );
+      if (calcLastDate == null || groupDate != calcLastDate) {
+        flatIndex++; // day divider
+        calcLastDate = groupDate;
+      }
+      if (group.any((e) => e.timestamp == target!.timestamp && e.word == target.word)) {
+        found = true;
+        break;
+      }
+      flatIndex++; // the group item
+    }
+
+    final targetFlatIndex = found ? flatIndex : 0;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+
+      // Jump near the target first so ListView.builder creates it
+      final estimatedOffset = targetFlatIndex * 80.0;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      _scrollController.jumpTo(estimatedOffset.clamp(0.0, maxScroll));
+
+      // Then use ensureVisible for precise positioning
+      void tryScroll([int attempts = 0]) {
+        final ctx = _scrollTargetKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: 0.3,
+          );
+        } else if (attempts < 5) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            tryScroll(attempts + 1);
+          });
+        }
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        tryScroll();
+      });
+
+      // Clear highlight after scrolling
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) setState(() => _scrollToTarget = null);
+      });
     });
   }
 
