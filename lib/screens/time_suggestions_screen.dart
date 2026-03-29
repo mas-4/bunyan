@@ -14,7 +14,7 @@ class TimeSuggestionsScreen extends StatelessWidget {
     required this.windowMinutes,
   });
 
-  List<MapEntry<String, int>> _getTimeFilteredSuggestions() {
+  List<_ScoredSuggestion> _getTimeFilteredSuggestions() {
     final now = DateTime.now();
     final currentMinutes = now.hour * 60 + now.minute;
 
@@ -30,17 +30,34 @@ class TimeSuggestionsScreen extends StatelessWidget {
       return diff <= windowMinutes;
     }).toList();
 
-    // Count frequency of unique words
-    final wordCounts = <String, int>{};
+    // Group entries by word, tracking count and most recent timestamp
+    final wordData = <String, _WordData>{};
     for (final entry in filteredEntries) {
-      wordCounts[entry.word] = (wordCounts[entry.word] ?? 0) + 1;
+      final existing = wordData[entry.word];
+      if (existing == null) {
+        wordData[entry.word] = _WordData(1, entry.timestamp);
+      } else {
+        existing.count++;
+        if (entry.timestamp.isAfter(existing.mostRecent)) {
+          existing.mostRecent = entry.timestamp;
+        }
+      }
     }
 
-    // Sort by frequency descending
-    final sortedEntries = wordCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    if (wordData.isEmpty) return [];
 
-    return sortedEntries;
+    // Compound score: frequency * recency_weight
+    // Recency decays with a half-life of 30 days
+    final scored = <_ScoredSuggestion>[];
+    for (final e in wordData.entries) {
+      final daysAgo = now.difference(e.value.mostRecent).inHours / 24.0;
+      final recencyWeight = 1.0 / (1.0 + daysAgo / 30.0);
+      final score = e.value.count * recencyWeight;
+      scored.add(_ScoredSuggestion(e.key, e.value.count, score));
+    }
+
+    scored.sort((a, b) => b.score.compareTo(a.score));
+    return scored;
   }
 
   String _formatTimeWindow() {
@@ -95,15 +112,15 @@ class TimeSuggestionsScreen extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final suggestion = suggestions[index];
                       return ListTile(
-                        title: Text(suggestion.key),
-                        subtitle: Text('${suggestion.value}x around this time'),
+                        title: Text(suggestion.word),
+                        subtitle: Text('${suggestion.count}x around this time'),
                         trailing: IconButton(
                           icon: Icon(Icons.add_circle_outline),
                           onPressed: () {
-                            onAddEntry(suggestion.key);
+                            onAddEntry(suggestion.word);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Added: ${suggestion.key}'),
+                                content: Text('Added: ${suggestion.word}'),
                                 duration: Duration(seconds: 1),
                               ),
                             );
@@ -117,4 +134,17 @@ class TimeSuggestionsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WordData {
+  int count;
+  DateTime mostRecent;
+  _WordData(this.count, this.mostRecent);
+}
+
+class _ScoredSuggestion {
+  final String word;
+  final int count;
+  final double score;
+  _ScoredSuggestion(this.word, this.count, this.score);
 }

@@ -17,6 +17,7 @@ import 'entry_stats_screen.dart';
 import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
 import 'time_suggestions_screen.dart';
+import 'tag_browser_screen.dart';
 import 'settings_screen.dart';
 import 'tag_manager_screen.dart';
 import 'calendar_screen.dart';
@@ -1609,6 +1610,30 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     );
   }
 
+  void _forceResort() {
+    setState(() {
+      _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      _filterEntries();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Sorted by newest first'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  void _openTagBrowser() {
+    final tagsByFrequency = _getTagsSortedByFrequency();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TagBrowserScreen(
+          entries: _entries,
+          tagsByFrequency: tagsByFrequency,
+          onAddEntry: (word) => _addEntry(word, clearController: false),
+        ),
+      ),
+    );
+  }
+
   void _openTimeSuggestions() {
     Navigator.push(
       context,
@@ -1883,6 +1908,11 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   tooltip: 'Habits',
                 ),
                 IconButton(
+                  icon: Icon(Icons.sell),
+                  onPressed: _openTagBrowser,
+                  tooltip: 'Tags',
+                ),
+                IconButton(
                   icon: Icon(Icons.access_time),
                   onPressed: _openTimeSuggestions,
                   tooltip: 'Time Suggestions',
@@ -1924,6 +1954,14 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
               onTap: () {
                 Navigator.pop(context);
                 _openSettings();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.sort),
+              title: Text('Sort by Newest'),
+              onTap: () {
+                Navigator.pop(context);
+                _forceResort();
               },
             ),
             // --- Data ---

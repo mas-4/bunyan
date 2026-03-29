@@ -27,9 +27,11 @@ class EditEntryScreen extends StatefulWidget {
   State<EditEntryScreen> createState() => _EditEntryScreenState();
 }
 
-class _EditEntryScreenState extends State<EditEntryScreen> {
+class _EditEntryScreenState extends State<EditEntryScreen>
+    with SingleTickerProviderStateMixin {
   late TextEditingController _wordController;
   late DateTime _selectedDateTime;
+  late TabController _tabController;
   List<String> _suggestions = [];
   bool _showSuggestions = false;
   bool _whenPickerActive = false;
@@ -40,11 +42,13 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     _wordController = TextEditingController(text: widget.entry.word);
     _selectedDateTime = widget.entry.timestamp;
     _wordController.addListener(_checkForTags);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
   void dispose() {
     _wordController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -170,28 +174,100 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     return sorted;
   }
 
-  /// Parse composite entries (e.g. "Restaurant: pasta, salad, drink")
-  /// and return widgets with + buttons for each subcomponent.
-  List<Widget> _buildSubcomponents() {
+
+  Widget _buildRelatedTab() {
+    final relatedEntries = _getRelatedEntries();
+    if (relatedEntries.isEmpty) {
+      return Center(
+        child: Text(
+          'No related entries found',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Text(
+            '± ${widget.relatedEntriesWindow} min',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: relatedEntries.length,
+            itemBuilder: (context, index) {
+              final related = relatedEntries[index];
+              return ListTile(
+                dense: true,
+                title: Text(related.key),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${related.value}x',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.add_circle_outline),
+                      onPressed: () {
+                        widget.onAddRelated(related.key, _selectedDateTime);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Added: ${related.key}'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildComponentsTab() {
     final text = _wordController.text.trim();
     final colonIndex = text.indexOf(':');
-    if (colonIndex < 0 || colonIndex == text.length - 1) return [];
+    if (colonIndex < 0 || colonIndex == text.length - 1) {
+      return Center(
+        child: Text(
+          'No components (use "prefix: a, b, c" format)',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
 
     final afterColon = text.substring(colonIndex + 1).trim();
-    if (afterColon.isEmpty) return [];
+    if (afterColon.isEmpty) {
+      return Center(
+        child: Text(
+          'No components found',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
 
     final parts = afterColon.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    if (parts.length < 2) return [];
+    if (parts.length < 2) {
+      return Center(
+        child: Text(
+          'Need at least 2 comma-separated components',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
 
     final prefix = text.substring(0, colonIndex).trim();
 
-    return [
-      Divider(),
-      Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16.0),
-        child: Text('Components', style: Theme.of(context).textTheme.titleMedium),
-      ),
-      ...parts.map((part) => ListTile(
+    return ListView(
+      children: parts.map((part) => ListTile(
         dense: true,
         title: Text(part),
         trailing: IconButton(
@@ -207,8 +283,8 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
             );
           },
         ),
-      )),
-    ];
+      )).toList(),
+    );
   }
 
   void _checkForTags() {
@@ -422,68 +498,20 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
               ],
             ),
           ),
-          ..._buildSubcomponents(),
-          Divider(),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              children: [
-                Text(
-                  'Often logged nearby',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                SizedBox(width: 8),
-                Text(
-                  '(± ${widget.relatedEntriesWindow} min)',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                ),
-              ],
-            ),
+          TabBar(
+            controller: _tabController,
+            tabs: [
+              Tab(text: 'Related'),
+              Tab(text: 'Components'),
+            ],
           ),
           Expanded(
-            child: Builder(
-              builder: (context) {
-                final relatedEntries = _getRelatedEntries();
-                if (relatedEntries.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'No related entries found',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: relatedEntries.length,
-                  itemBuilder: (context, index) {
-                    final related = relatedEntries[index];
-                    return ListTile(
-                      dense: true,
-                      title: Text(related.key),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${related.value}x',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.add_circle_outline),
-                            onPressed: () {
-                              widget.onAddRelated(related.key, _selectedDateTime);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Added: ${related.key}'),
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildRelatedTab(),
+                _buildComponentsTab(),
+              ],
             ),
           ),
         ],
