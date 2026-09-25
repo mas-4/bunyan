@@ -6,7 +6,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:confetti/confetti.dart';
 import 'dart:io';
-import 'dart:convert';
 import 'dart:math';
 
 import '../models.dart';
@@ -16,22 +15,25 @@ import 'edit_entry_screen.dart';
 import 'entry_stats_screen.dart';
 import 'hotbar_settings_screen.dart';
 import 'backup_screen.dart';
-import 'time_suggestions_screen.dart';
-import 'tag_browser_screen.dart';
 import 'settings_screen.dart';
 import 'tag_manager_screen.dart';
-import 'calendar_screen.dart';
 import 'habit_screen.dart';
 import 'help_screen.dart';
+import 'todo_screen.dart';
+import 'stats_screen.dart';
 
-class WordLoggerHome extends StatefulWidget {
-  const WordLoggerHome({super.key});
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
 
   @override
-  WordLoggerHomeState createState() => WordLoggerHomeState();
+  AppShellState createState() => AppShellState();
 }
 
-class WordLoggerHomeState extends State<WordLoggerHome> {
+class AppShellState extends State<AppShell> {
+  /// Index into the bottom navigation tabs: habits, todos, log, stats.
+  int _tabIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -66,44 +68,16 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   WordEntry? _scrollToTarget;
   final GlobalKey _scrollTargetKey = GlobalKey();
 
-  // Generate 8-char hash from text + timestamp for todo tracking
-  String _generateTodoHash(String text, DateTime timestamp) {
-    final combined = '$text${timestamp.toIso8601String()}';
-    final bytes = utf8.encode(combined);
-    int hash = 0;
-    for (final byte in bytes) {
-      hash = ((hash << 5) - hash) + byte;
-      hash = hash & 0x7FFFFFFF;
-    }
-    return hash.toRadixString(16).padLeft(8, '0').substring(0, 8);
-  }
-
-  // Check if entry contains #todo
-  bool _isTodoEntry(WordEntry entry) {
-    return entry.word.toLowerCase().contains('#todo');
-  }
-
   // Check if a todo entry has been completed
   bool _isTodoCompleted(WordEntry entry) {
-    if (!_isTodoEntry(entry)) return false;
-    final hash = _generateTodoHash(entry.word, entry.timestamp);
-    return _cache.isDoneHash(hash);
-  }
-
-  // Check if entry is a #done entry
-  bool _isDoneEntry(WordEntry entry) {
-    return entry.word.toLowerCase().contains('#done');
-  }
-
-  // Check if entry is pinned
-  bool _isPinned(WordEntry entry) {
-    return entry.word.toLowerCase().contains('#pin');
+    if (!isTodoText(entry.word)) return false;
+    return _cache.isDoneHash(generateTodoHash(entry.word, entry.timestamp));
   }
 
   // Sort pinned entries first, preserving relative order within each group
   List<WordEntry> _withPinnedFirst(List<WordEntry> entries) {
-    final pinned = entries.where(_isPinned).toList();
-    final unpinned = entries.where((e) => !_isPinned(e)).toList();
+    final pinned = entries.where((e) => isPinnedText(e.word)).toList();
+    final unpinned = entries.where((e) => !isPinnedText(e.word)).toList();
     return [...pinned, ...unpinned];
   }
 
@@ -404,7 +378,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final oldEntry = entry;
         String newWord;
 
-        if (_isPinned(entry)) {
+        if (isPinnedText(entry.word)) {
           newWord = entry.word
               .replaceAll(RegExp(r'\s*#pin', caseSensitive: false), '')
               .trim();
@@ -441,12 +415,12 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   Widget? _pinnedLeading(WordEntry entry) {
-    if (!_isPinned(entry)) return null;
+    if (!isPinnedText(entry.word)) return null;
     return Icon(Icons.push_pin, size: 18, color: Colors.grey.shade500);
   }
 
   Widget _wrapPinned(WordEntry entry, Widget child) {
-    if (!_isPinned(entry)) return child;
+    if (!isPinnedText(entry.word)) return child;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
@@ -483,7 +457,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         entry.word == _scrollToTarget!.word;
     final dt = DateTimeFormatter(entry.timestamp);
     final count = _cache.getWordCount(entry.word);
-    final pinned = _isPinned(entry);
+    final pinned = isPinnedText(entry.word);
     final hash = generateContentHash(entry.word);
 
     if (_bulkEditMode) {
@@ -539,7 +513,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     }
 
     Widget? leading;
-    if (_isFilteringTodo && _isTodoEntry(entry) && !_isTodoCompleted(entry)) {
+    if (_isFilteringTodo && isTodoText(entry.word) && !_isTodoCompleted(entry)) {
       leading = pinned
           ? Row(
               mainAxisSize: MainAxisSize.min,
@@ -614,7 +588,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         leading: leading,
         title: Text(
           entry.word.trim(),
-          style: (_isTodoEntry(entry) && _isTodoCompleted(entry) && !_isFilteringTodo)
+          style: (isTodoText(entry.word) && _isTodoCompleted(entry) && !_isFilteringTodo)
               ? TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
               : null,
         ),
@@ -753,7 +727,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
 
       setState(() {
         _displayEntries = _withPinnedFirst(
-          _entries.where((e) => !_isDoneEntry(e)).toList(),
+          _entries.where((e) => !isDoneText(e.word)).toList(),
         );
         _filterEntries();
       });
@@ -978,7 +952,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         setState(() {
           _entries = entries;
           _displayEntries = _withPinnedFirst(
-            entries.where((e) => !_isDoneEntry(e)).toList(),
+            entries.where((e) => !isDoneText(e.word)).toList(),
           );
           _isLoading = false;
         });
@@ -1046,10 +1020,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
         final isFilteringForDone = lowerTrimmed.contains('#done');
         final matchingEntries = _entries.where((entry) {
           final matches = matchesSearch(entry.word, trimmedText);
-          if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
+          if (isFilteringForTodo && isTodoText(entry.word) && _isTodoCompleted(entry)) {
             return false;
           }
-          if (!isFilteringForDone && _isDoneEntry(entry)) return false;
+          if (!isFilteringForDone && isDoneText(entry.word)) return false;
           return matches;
         }).toList();
 
@@ -1066,7 +1040,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     if (text.isEmpty) {
       setState(() {
         _displayEntries = _withPinnedFirst(
-          _entries.where((e) => !_isDoneEntry(e)).toList(),
+          _entries.where((e) => !isDoneText(e.word)).toList(),
         );
         _showSuggestions = false;
         _showAllMatches = false;
@@ -1081,10 +1055,10 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     final isFilteringForDone = lowerText.contains('#done');
     final matchingEntries = _entries.where((entry) {
       final matches = matchesSearch(entry.word, text);
-      if (isFilteringForTodo && _isTodoEntry(entry) && _isTodoCompleted(entry)) {
+      if (isFilteringForTodo && isTodoText(entry.word) && _isTodoCompleted(entry)) {
         return false;
       }
-      if (!isFilteringForDone && _isDoneEntry(entry)) return false;
+      if (!isFilteringForDone && isDoneText(entry.word)) return false;
       return matches;
     }).toList();
 
@@ -1135,7 +1109,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     _controller.addListener(_filterEntries);
 
     final unfilteredEntries = _withPinnedFirst(
-      _entries.where((e) => !_isDoneEntry(e)).toList(),
+      _entries.where((e) => !isDoneText(e.word)).toList(),
     );
 
     // Expand the group containing the target so the entry is visible
@@ -1491,13 +1465,9 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
   }
 
   Future<void> _markTodoAsDone(WordEntry todoEntry) async {
-    if (!_isTodoEntry(todoEntry)) return;
+    if (!isTodoText(todoEntry.word)) return;
 
-    final hash = _generateTodoHash(todoEntry.word, todoEntry.timestamp);
-    // Remove #todo from the text to avoid infinite loops
-    final cleanedText = todoEntry.word.replaceAll(RegExp(r'#todo', caseSensitive: false), '').trim();
-    final doneText = '#done $hash $cleanedText';
-
+    final doneText = buildDoneText(todoEntry.word, todoEntry.timestamp);
     await _addEntry(doneText, clearController: false);
     HapticFeedback.mediumImpact();
     _confettiController.play();
@@ -1617,54 +1587,6 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Sorted by newest first'), duration: Duration(seconds: 1)),
-    );
-  }
-
-  void _openTagBrowser() {
-    final tagsByFrequency = _getTagsSortedByFrequency();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TagBrowserScreen(
-          entries: _entries,
-          tagsByFrequency: tagsByFrequency,
-          onAddEntry: (word) => _addEntry(word, clearController: false),
-        ),
-      ),
-    );
-  }
-
-  void _openTimeSuggestions() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TimeSuggestionsScreen(
-          entries: _entries,
-          onAddEntry: (word) => _addEntry(word, clearController: false),
-          windowMinutes: _aroundNowWindow,
-        ),
-      ),
-    );
-  }
-
-  void _openHabits() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HabitScreen(
-          entries: _entries,
-          cache: _cache,
-          onAddEntry: (word) async {
-            await _addEntry(word, clearController: false);
-          },
-          onAddEntryWithTimestamp: (word, timestamp) async {
-            await _addEntryWithTimestamp(word, timestamp);
-          },
-          onDeleteEntry: (entry) async {
-            await _deleteEntry(entry);
-          },
-        ),
-      ),
     );
   }
 
@@ -1830,26 +1752,121 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
     _focusNode.requestFocus();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    final uniqueWords = _entries
-        .map((e) => e.word.toLowerCase())
-        .toSet()
-        .length;
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
 
-    return Stack(
-      children: [
-        Scaffold(
-          appBar: AppBar(
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 32,
+        ),
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(color: Theme.of(context).primaryColor),
+            child: Text(
+              'Bunyan',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ),
+          // --- Configuration ---
+          _drawerSectionHeader('Configuration'),
+          ListTile(
+            leading: Icon(Icons.dashboard_customize),
+            title: Text('Hotbar'),
+            onTap: () {
+              Navigator.pop(context);
+              _openHotbarSettings();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.label),
+            title: Text('Tags'),
+            onTap: () {
+              Navigator.pop(context);
+              _openTagManager();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.tune),
+            title: Text('Settings'),
+            onTap: () {
+              Navigator.pop(context);
+              _openSettings();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.sort),
+            title: Text('Sort by Newest'),
+            onTap: () {
+              Navigator.pop(context);
+              _forceResort();
+            },
+          ),
+          // --- Data ---
+          _drawerSectionHeader('Data'),
+          ListTile(
+            leading: Icon(Icons.file_download),
+            title: Text('Import'),
+            onTap: () {
+              Navigator.pop(context);
+              _importData();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.share),
+            title: Text('Export'),
+            onTap: () {
+              Navigator.pop(context);
+              _exportData();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.backup),
+            title: Text('Backups'),
+            onTap: () {
+              Navigator.pop(context);
+              _openBackupScreen();
+            },
+          ),
+          _drawerSectionHeader('About'),
+          ListTile(
+            leading: Icon(Icons.help_outline),
+            title: Text('Help'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HelpScreen()),
+              );
+            },
+          ),
+          Divider(),
+          ListTile(
+            leading: Icon(Icons.delete_forever, color: Colors.red),
+            title: Text('Reset Data', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              _resetEntries();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The Log tab: quick entry field, hotbar, and the full entry list.
+  Widget _buildLogPage(BuildContext context) {
+    final uniqueWords =
+        _entries.map((e) => e.word.toLowerCase()).toSet().length;
+
+    return Scaffold(
+      appBar: AppBar(
         title: Text(
-          _bulkEditMode ? '${_selectedIndices.length} selected' : '',
+          _bulkEditMode ? '${_selectedIndices.length} selected' : 'Log',
         ),
         leading: _bulkEditMode
             ? IconButton(icon: Icon(Icons.close), onPressed: _exitBulkEditMode)
-            : null,
+            : IconButton(icon: Icon(Icons.menu), onPressed: _openDrawer),
         actions: _bulkEditMode
             ? [
                 if (_selectedIndices.isNotEmpty)
@@ -1890,117 +1907,7 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
                   },
                   tooltip: 'Help',
                 ),
-                IconButton(
-                  icon: Icon(Icons.calendar_month),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CalendarScreen(entries: _entries),
-                      ),
-                    );
-                  },
-                  tooltip: 'Calendar',
-                ),
-                IconButton(
-                  icon: Icon(Icons.loop),
-                  onPressed: _openHabits,
-                  tooltip: 'Habits',
-                ),
-                IconButton(
-                  icon: Icon(Icons.sell),
-                  onPressed: _openTagBrowser,
-                  tooltip: 'Tags',
-                ),
-                IconButton(
-                  icon: Icon(Icons.access_time),
-                  onPressed: _openTimeSuggestions,
-                  tooltip: 'Time Suggestions',
-                ),
               ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 32),
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: Theme.of(context).primaryColor),
-              child: Text(
-                'Bunyan 🪓',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            // --- Configuration ---
-            _drawerSectionHeader('Configuration'),
-            ListTile(
-              leading: Icon(Icons.dashboard_customize),
-              title: Text('Hotbar'),
-              onTap: () {
-                Navigator.pop(context);
-                _openHotbarSettings();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.label),
-              title: Text('Tags'),
-              onTap: () {
-                Navigator.pop(context);
-                _openTagManager();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.tune),
-              title: Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _openSettings();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.sort),
-              title: Text('Sort by Newest'),
-              onTap: () {
-                Navigator.pop(context);
-                _forceResort();
-              },
-            ),
-            // --- Data ---
-            _drawerSectionHeader('Data'),
-            ListTile(
-              leading: Icon(Icons.file_download),
-              title: Text('Import'),
-              onTap: () {
-                Navigator.pop(context);
-                _importData();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.share),
-              title: Text('Export'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportData();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.backup),
-              title: Text('Backups'),
-              onTap: () {
-                Navigator.pop(context);
-                _openBackupScreen();
-              },
-            ),
-            Divider(),
-            ListTile(
-              leading: Icon(Icons.delete_forever, color: Colors.red),
-              title: Text('Reset Data', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                _resetEntries();
-              },
-            ),
-          ],
-        ),
       ),
       floatingActionButton: _collapseInput
           ? FloatingActionButton.small(
@@ -2166,34 +2073,106 @@ class WordLoggerHomeState extends State<WordLoggerHome> {
           ),
         ],
       ),
-    ),
-    Align(
-      alignment: Alignment.topCenter,
-      child: ConfettiWidget(
-        confettiController: _confettiController,
-        blastDirection: pi / 2,
-        blastDirectionality: BlastDirectionality.explosive,
-        maxBlastForce: 20,
-        minBlastForce: 8,
-        emissionFrequency: 0.05,
-        numberOfParticles: 25,
-        gravity: 0.2,
-        colors: const [
-          Colors.green,
-          Colors.blue,
-          Colors.pink,
-          Colors.orange,
-          Colors.purple,
-          Colors.yellow,
-        ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final pages = [
+      HabitScreen(
+        entries: _entries,
+        cache: _cache,
+        onOpenMenu: _openDrawer,
+        onAddEntry: (word) => _addEntry(word, clearController: false),
+        onAddEntryWithTimestamp: _addEntryWithTimestamp,
+        onDeleteEntry: _deleteEntry,
       ),
-    ),
-  ],
-);
+      TodoScreen(
+        entries: _entries,
+        cache: _cache,
+        onOpenMenu: _openDrawer,
+        onAddEntry: (word) => _addEntry(word, clearController: false),
+        onCompleteTodo: _markTodoAsDone,
+        onDeleteEntry: _deleteEntry,
+        onEditEntry: _editEntry,
+      ),
+      _buildLogPage(context),
+      StatsScreen(
+        entries: _entries,
+        windowMinutes: _aroundNowWindow,
+        onOpenMenu: _openDrawer,
+        onAddEntry: (word) => _addEntry(word, clearController: false),
+        onOpenEntryStats: _openEntryStats,
+      ),
+    ];
+
+    return Stack(
+      children: [
+        Scaffold(
+          key: _scaffoldKey,
+          drawer: _buildDrawer(context),
+          body: IndexedStack(index: _tabIndex, children: pages),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _tabIndex,
+            onDestinationSelected: (index) {
+              if (index == _tabIndex) return;
+              FocusScope.of(context).unfocus();
+              setState(() => _tabIndex = index);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.loop_outlined),
+                selectedIcon: Icon(Icons.loop),
+                label: 'Habits',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.check_circle_outline),
+                selectedIcon: Icon(Icons.check_circle),
+                label: 'Todos',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.subject_outlined),
+                selectedIcon: Icon(Icons.subject),
+                label: 'Log',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.insights_outlined),
+                selectedIcon: Icon(Icons.insights),
+                label: 'Stats',
+              ),
+            ],
+          ),
+        ),
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConfettiWidget(
+            confettiController: _confettiController,
+            blastDirection: pi / 2,
+            blastDirectionality: BlastDirectionality.explosive,
+            maxBlastForce: 20,
+            minBlastForce: 8,
+            emissionFrequency: 0.05,
+            numberOfParticles: 25,
+            gravity: 0.2,
+            colors: const [
+              Colors.green,
+              Colors.blue,
+              Colors.pink,
+              Colors.orange,
+              Colors.purple,
+              Colors.yellow,
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
-/// Helper for the grouped list view to hold either a day divider or entry group.
 class _ListItem {
   final bool isDivider;
   final DateTime? date;

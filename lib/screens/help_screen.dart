@@ -10,13 +10,25 @@ class HelpScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _section(context, 'Tabs', Icons.tab, [
+            _p('Bunyan has four tabs along the bottom:'),
+            _bullet('Habits — the grid of @habit entries and their day cells'),
+            _bullet('Todos — every open #todo, scheduled ones first'),
+            _bullet('Log — the full timestamped entry list and quick entry field'),
+            _bullet('Stats — totals, what you log around this time, most logged'),
+            _p('Import, export, backups, and configuration live in the menu '
+                'behind the icon at the top left of any tab.'),
+          ]),
+          const SizedBox(height: 24),
           _section(context, 'Todos', Icons.check_circle_outline, [
-            _p('Add #todo to any entry to mark it as a task.'),
+            _p('Add #todo to any entry to mark it as a task. Anything typed '
+                'on the Todos tab gets #todo added automatically.'),
             _code('buy groceries #todo'),
-            _p('When filtering by #todo, completed todos are hidden. '
-                'Tap the checkmark icon to mark a todo as done — this creates '
-                'a #done entry with a reference hash.'),
-            _p('Completed todos show with strikethrough text in the main list.'),
+            _p('Tap a checkbox to complete a todo — this creates a #done '
+                'entry with a reference hash, so the original log stays intact.'),
+            _p('Add a #when tag to schedule a todo; it then sorts by due date '
+                'and shows overdue in red.'),
+            _p('Completed todos show with strikethrough text.'),
           ]),
           const SizedBox(height: 24),
           _section(context, 'Symptoms', Icons.monitor_heart_outlined, [
@@ -53,9 +65,12 @@ class HelpScreen extends StatelessWidget {
                 'tap the help icon in the Habits app bar.'),
           ]),
           const SizedBox(height: 24),
-          _section(context, 'Calendar tags', Icons.calendar_month, [
-            _p('See the Calendar screen for #when tag documentation — '
-                'tap the help icon in the Calendar app bar.'),
+          _section(context, 'Scheduling with #when', Icons.schedule, [
+            _p('Use #when to attach a date and time to any entry. Typing '
+                '#when auto-opens a date & time picker.'),
+            _code('#when[2026-02-16 2:30:00 PM]'),
+            _p('Scheduled todos appear under Scheduled on the Todos tab, '
+                'ordered by due date.'),
           ]),
           const SizedBox(height: 32),
         ],

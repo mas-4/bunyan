@@ -58,11 +58,13 @@ class HabitScreen extends StatefulWidget {
   final Future<void> Function(String word) onAddEntry;
   final Future<void> Function(String word, DateTime timestamp) onAddEntryWithTimestamp;
   final Future<void> Function(WordEntry entry) onDeleteEntry;
+  final VoidCallback? onOpenMenu;
 
   const HabitScreen({
     super.key,
     required this.entries,
     required this.cache,
+    this.onOpenMenu,
     required this.onAddEntry,
     required this.onAddEntryWithTimestamp,
     required this.onDeleteEntry,
@@ -795,6 +797,12 @@ class _HabitScreenState extends State<HabitScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Habits'),
+        leading: widget.onOpenMenu == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: widget.onOpenMenu,
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),

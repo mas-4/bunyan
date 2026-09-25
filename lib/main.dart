@@ -23,7 +23,7 @@ class WordLoggerApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       themeMode: ThemeMode.system,
-      home: WordLoggerHome(),
+      home: AppShell(),
     );
   }
 }

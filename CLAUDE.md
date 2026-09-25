@@ -28,16 +28,30 @@ The app is organized into multiple files for maintainability:
 
 - **lib/main.dart**: App entry point and MaterialApp configuration
 - **lib/models.dart**: Data models (`DateTimeFormatter`, `WordEntry`)
-- **lib/utils.dart**: Utility functions (file operations, backup management, settings)
+- **lib/utils.dart**: Utility functions (file operations, backup management, settings, habit DSL, todo/pin helpers)
 - **lib/frequency_cache.dart**: `EntryFrequencyCache` class for O(1) frequency lookups
+- **lib/habit_logic.dart**: Habit strength, streak, and next-due calculations
 - **lib/screens/**: Screen widgets
-  - `home_screen.dart`: Main screen with entry list, filtering, and CSV file management
+  - `app_shell.dart`: Owns all entry state and CSV I/O; hosts the four tabs, the drawer, and the Log tab UI
+  - `habit_screen.dart`: Habits tab (default) — habit grid with day cells
+  - `todo_screen.dart`: Todos tab — open/completed `#todo` entries, scheduled first
+  - `stats_screen.dart`: Stats tab — totals, around-now suggestions, most-logged entries
+  - `habit_detail_screen.dart`: Per-habit detail with calendar and history
   - `edit_entry_screen.dart`: Edit individual entries with tag suggestions
   - `entry_stats_screen.dart`: Statistics for a specific entry word
   - `hotbar_settings_screen.dart`: Configure quick-access tag buttons
   - `backup_screen.dart`: Backup management
-  - `time_suggestions_screen.dart`: Time-based entry suggestions
+  - `tag_manager_screen.dart`: Bulk tag renaming
+  - `help_screen.dart`: In-app syntax documentation
   - `settings_screen.dart`: App settings
+
+### Navigation
+`AppShellState` is the single owner of `_entries`, the frequency cache, and all
+file writes. It renders a `NavigationBar` over an `IndexedStack` of four pages
+(Habits, Todos, Log, Stats); each page is its own `Scaffold` and receives
+entries plus callbacks (`onAddEntry`, `onDeleteEntry`, `onCompleteTodo`, ...)
+rather than touching the CSV itself. The drawer (config, import/export,
+backups, reset) lives on the shell and pages open it via `onOpenMenu`.
 
 ### EntryFrequencyCache
 Centralized cache that provides O(1) lookups for:
@@ -76,7 +90,6 @@ Core packages in `pubspec.yaml`:
 
 ## Testing
 
-Currently no test files exist. When adding tests:
 - Use `flutter test` command
-- Test files should go in `test/` directory
+- Test files live in `test/` (currently `habit_logic_test.dart`)
 - Focus on WordEntry CSV serialization and DateTimeFormatter logic

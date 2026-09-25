@@ -1,0 +1,53 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bunyan (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug"
+    },
+    {
+      "name": "Bunyan (profile)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "profile"
+    },
+    {
+      "name": "Bunyan (release)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "release"
+    },
+    {
+      "name": "Bunyan (Android device)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "android"
+    },
+    {
+      "name": "Bunyan (Windows desktop)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "windows"
+    },
+    {
+      "name": "Attach to running app",
+      "request": "attach",
+      "type": "dart"
+    },
+    {
+      "name": "Tests",
+      "request": "launch",
+      "type": "dart",
+      "program": "test/"
+    }
+  ]
+}

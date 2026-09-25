@@ -895,3 +895,45 @@ Future<bool> requestGoogleBackup() async {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Todo / pin helpers
+// ---------------------------------------------------------------------------
+
+/// Generate the 8-char hash used to link a `#done` entry to its `#todo`.
+String generateTodoHash(String text, DateTime timestamp) {
+  final combined = '$text${timestamp.toIso8601String()}';
+  final bytes = utf8.encode(combined);
+  int hash = 0;
+  for (final byte in bytes) {
+    hash = ((hash << 5) - hash) + byte;
+    hash = hash & 0x7FFFFFFF;
+  }
+  return hash.toRadixString(16).padLeft(8, '0').substring(0, 8);
+}
+
+/// True when the entry text carries a `#todo` tag.
+bool isTodoText(String text) => text.toLowerCase().contains('#todo');
+
+/// True when the entry text is a `#done` completion record.
+bool isDoneText(String text) => text.toLowerCase().contains('#done');
+
+/// True when the entry text is pinned with `#pin`.
+bool isPinnedText(String text) => text.toLowerCase().contains('#pin');
+
+/// Build the `#done <hash> <text>` record that completes a todo.
+String buildDoneText(String todoText, DateTime todoTimestamp) {
+  final hash = generateTodoHash(todoText, todoTimestamp);
+  final cleaned =
+      todoText.replaceAll(RegExp(r'#todo', caseSensitive: false), '').trim();
+  return '#done $hash $cleaned';
+}
+
+/// Strip tags (leading-char words) from text for display purposes.
+String stripTags(String text) {
+  final words = text
+      .split(' ')
+      .where((w) => w.isEmpty || !tagLeaders.contains(w[0]))
+      .toList();
+  return words.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
