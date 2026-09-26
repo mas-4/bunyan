@@ -491,7 +491,12 @@ class _HabitScreenState extends State<HabitScreen> {
       );
     }
 
-    if (isDue && dayStart.isBefore(todayStart)) {
+    // For window specs (3/w, 1/m, november, ...) a past day inside a window
+    // that is still open isn't a miss — the window can still be satisfied.
+    final bounds = habit.spec.periodBounds(day);
+    final windowStillOpen = bounds != null && bounds.end.isAfter(todayStart);
+
+    if (isDue && dayStart.isBefore(todayStart) && !windowStillOpen) {
       // Missed — past day that was due but not completed
       return Center(
         child: InkWell(
@@ -707,9 +712,18 @@ class _HabitScreenState extends State<HabitScreen> {
                   '@habit[5 in 2w]  5 times in any 2-week window'),
               _helpSub('Calendar-anchored'),
               _helpCode('@habit[every monday]\n'
-                  '@habit[every march]\n'
+                  '@habit[every march]    once during march\n'
                   '@habit[13th]           13th of every month\n'
                   '@habit[march 13th]     specific date yearly'),
+              _helpText('A month on its own is one window — doing it on any day '
+                  'of that month satisfies it, and nothing counts as missed '
+                  'until the month is over. Dates past the end of a short month '
+                  'fall on its last day (the 31st lands on Feb 28).'),
+              _helpSub('Combining specs'),
+              _helpCode('@habit[november, 1d]      daily, but only in november\n'
+                  '@habit[monday, thursday]  either day'),
+              _helpText('A month combined with a schedule scopes that schedule '
+                  'to the month. Specs of the same kind mean either one.'),
               _helpSub('Dependency (hash or tag)'),
               _helpCode('@habit[after 7 a3f7]  activates after 7\n'
                   '                      entries matching hash a3f7\n'
@@ -717,10 +731,13 @@ class _HabitScreenState extends State<HabitScreen> {
                   '                      containing tag @run'),
               _helpText('Tag dependencies match any entry containing the tag, '
                   'e.g. both "@run long" and "@run base" count toward '
-                  '@habit[every 3 @run]. The count resets after each completion.'),
+                  '@habit[every 3 @run]. Each completion spends 3 of them, so '
+                  'anything logged before you got around to it carries over to '
+                  'the next cycle.'),
               _helpSub('Negative (avoid tracking)'),
-              _helpCode('@habit[not 1d]         avoid daily\n'
-                  '@habit[not 3 @smoke]   track avoidance by tag'),
+              _helpCode('@habit[-]              avoid, same as [not 1d]\n'
+                  '@habit[-@smoke]        avoid entries tagged @smoke\n'
+                  '@habit[not 3 @smoke]   same, spelled out'),
               _helpSub('Rescheduling & ending'),
               _helpText('To change a schedule, add a new entry with the updated spec. '
                   'The most recent entry per hash determines the current schedule.'),

@@ -143,19 +143,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Widget _buildDepTagNextDue(DependencyTagHabitSpec spec) {
-    final completions = widget.habit.completions;
-    int sinceLastCompletion;
-
-    if (completions.isEmpty) {
-      sinceLastCompletion = spec.tagOccurrences.length;
-    } else {
-      final lastCompletion = completions.reduce((a, b) => a.isAfter(b) ? a : b);
-      sinceLastCompletion = spec.tagOccurrences
-          .where((t) => t.isAfter(lastCompletion))
-          .length;
-    }
-
-    final remaining = spec.requiredCount - sinceLastCompletion;
+    // Banked occurrences, including any surplus carried over from the last
+    // cycle, so this matches when the habit actually comes due.
+    final banked = spec.creditsOnDay(DateTime.now(), widget.habit.completions);
+    final remaining = spec.requiredCount - banked;
 
     if (remaining <= 0) {
       return Card(
@@ -175,7 +166,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         leading: const Icon(Icons.event_available, color: Colors.green),
         title: const Text('Next Due'),
         subtitle: Text(
-          'Due after $remaining more ${spec.tag}',
+          'Due after $remaining more ${spec.tag}'
+          '${banked > 0 ? ' ($banked of ${spec.requiredCount} logged)' : ''}',
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ),

@@ -65,13 +65,24 @@ HabitSpec? parseHabitSpec(String text) {
 }
 
 HabitSpec? _parseSingleSpec(String spec) {
-  // Negative with tag: -@tag or -#tag
+  // Negative with tag: -@tag, -#tag, "not @tag", "not 3 @smoke"
   final negTagMatch = RegExp(r'^-([!@#\^&~+=\\|]\S+)$').firstMatch(spec);
   if (negTagMatch != null) {
     return NegativeTagHabitSpec(tag: negTagMatch.group(1)!);
   }
-  // Standalone negative
+  // "not [N] TAG" — the count is accepted for readability but avoidance is
+  // scored per clean day, so it carries no extra meaning.
+  final notTagMatch = RegExp(r'^not\s+(?:\d+\s+)?([!@#\^&~+=\\|]\S+)$',
+          caseSensitive: false)
+      .firstMatch(spec);
+  if (notTagMatch != null) {
+    return NegativeTagHabitSpec(tag: notTagMatch.group(1)!);
+  }
+  // Standalone negative: "-", "neg", "negative", or "not <schedule>"
   if (spec == 'negative' || spec == 'neg' || spec == '-') {
+    return NegativeHabitSpec();
+  }
+  if (RegExp(r'^not(\s+\S+)*$', caseSensitive: false).hasMatch(spec)) {
     return NegativeHabitSpec();
   }
 
@@ -167,7 +178,25 @@ abstract class HabitSpec {
 
   /// Short label for display, e.g. "every 2d", "3/w".
   String get displayLabel;
+
+  /// The scoring window [day] belongs to, for specs whose obligation spans
+  /// more than one day (`3/w`, `1/m`, `november`, ...). `start` is inclusive,
+  /// `end` exclusive.
+  ///
+  /// Returns null when the spec is scored day by day (the default), or when
+  /// [day] carries no obligation at all (e.g. a `november` habit in June).
+  /// Callers use this so a habit isn't marked missed on every day of a window
+  /// it can still be completed in.
+  ({DateTime start, DateTime end})? periodBounds(DateTime day) => null;
+
+  /// How many completions the window containing [day] requires.
+  /// Only meaningful when [periodBounds] is non-null.
+  int requiredInPeriod(DateTime day) => 1;
 }
+
+/// Last calendar day of [month] in [year] (28-31).
+int daysInMonth(int year, int month) =>
+    DateTime(year, month + 1, 0).day;
 
 DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -225,6 +254,13 @@ class FrequencyHabitSpec extends HabitSpec {
   final String periodUnit; // d, w, m, y
 
   FrequencyHabitSpec({required this.count, required this.periodUnit});
+
+  @override
+  ({DateTime start, DateTime end})? periodBounds(DateTime day) =>
+      periodUnit == 'd' ? null : _periodBounds(day);
+
+  @override
+  int requiredInPeriod(DateTime day) => count;
 
   ({DateTime start, DateTime end}) _periodBounds(DateTime day) {
     final dayStart = _startOfDay(day);
@@ -341,15 +377,23 @@ class MonthlyDateHabitSpec extends HabitSpec {
 
   MonthlyDateHabitSpec({required this.day});
 
+  /// The day this falls on in [date]'s month, clamped to the last day of
+  /// short months so `31st` still lands in February.
+  int _effectiveDay(DateTime date) {
+    final last = daysInMonth(date.year, date.month);
+    return day > last ? last : day;
+  }
+
   @override
   bool isDueOnDay(DateTime date, List<DateTime> completions) {
-    if (date.day != day) return false;
+    if (date.day != _effectiveDay(date)) return false;
     final dayStart = _startOfDay(date);
     return !completions.any((c) => _startOfDay(c) == dayStart);
   }
 
   @override
-  int requiredOnDay(DateTime date, List<DateTime> completions) => date.day == day ? 1 : 0;
+  int requiredOnDay(DateTime date, List<DateTime> completions) =>
+      date.day == _effectiveDay(date) ? 1 : 0;
 
   @override
   int completedOnDay(DateTime date, List<DateTime> completions) {
@@ -375,16 +419,23 @@ class YearlyDateHabitSpec extends HabitSpec {
 
   int get _month => _monthMap[monthName] ?? 1;
 
+  /// The day this falls on in [date]'s year, clamped to the last day of the
+  /// month (so `february 30th` resolves to the 28th/29th).
+  int _effectiveDay(DateTime date) {
+    final last = daysInMonth(date.year, _month);
+    return day > last ? last : day;
+  }
+
   @override
   bool isDueOnDay(DateTime date, List<DateTime> completions) {
-    if (date.month != _month || date.day != day) return false;
+    if (date.month != _month || date.day != _effectiveDay(date)) return false;
     final dayStart = _startOfDay(date);
     return !completions.any((c) => _startOfDay(c) == dayStart);
   }
 
   @override
   int requiredOnDay(DateTime date, List<DateTime> completions) =>
-    (date.month == _month && date.day == day) ? 1 : 0;
+    (date.month == _month && date.day == _effectiveDay(date)) ? 1 : 0;
 
   @override
   int completedOnDay(DateTime date, List<DateTime> completions) {
@@ -419,6 +470,16 @@ class YearlyMonthHabitSpec extends HabitSpec {
   @override
   int requiredOnDay(DateTime date, List<DateTime> completions) => date.month == _month ? 1 : 0;
 
+  /// The whole month is one window: completing it on any day satisfies it.
+  @override
+  ({DateTime start, DateTime end})? periodBounds(DateTime date) {
+    if (date.month != _month) return null;
+    return (
+      start: DateTime(date.year, _month, 1),
+      end: DateTime(date.year, _month + 1, 1),
+    );
+  }
+
   @override
   int completedOnDay(DateTime date, List<DateTime> completions) {
     final dayStart = _startOfDay(date);
@@ -428,6 +489,56 @@ class YearlyMonthHabitSpec extends HabitSpec {
   @override
   String get displayLabel => monthName.substring(0, 3);
 }
+
+/// Occurrences banked toward the next activation of a dependency habit
+/// (`@habit[every 4 @drive]`, `@habit[after 4 a3f7]`).
+///
+/// Each qualifying occurrence adds one credit; each completion spends
+/// [requiredCount] of them, never dropping below zero. Spending rather than
+/// resetting means occurrences logged between "due" and "completed" carry over,
+/// so the habit comes due *with* the 4th occurrence of every cycle instead of
+/// drifting later each time. Completing early costs only what is banked, so it
+/// never leaves a debt.
+///
+/// Occurrences before the habit's first entry don't count, and [asOf] (an
+/// exclusive upper bound) limits the tally to events up to a point in time.
+int dependencyCredits({
+  required List<DateTime> occurrences,
+  required List<DateTime> completions,
+  required int requiredCount,
+  DateTime? asOf,
+}) {
+  if (requiredCount <= 0) return 0;
+  bool inRange(DateTime t) => asOf == null || t.isBefore(asOf);
+
+  final pastCompletions = completions.where(inRange).toList()..sort();
+  if (pastCompletions.isEmpty) {
+    return occurrences.where(inRange).length;
+  }
+
+  // The habit's own defining entry is its first completion; it starts the
+  // count rather than spending credits.
+  final start = pastCompletions.first;
+  final events = <({DateTime at, bool isCompletion})>[
+    for (final t in occurrences)
+      if (t.isAfter(start) && inRange(t)) (at: t, isCompletion: false),
+    for (final c in pastCompletions.skip(1)) (at: c, isCompletion: true),
+  ]..sort((a, b) => a.at.compareTo(b.at));
+
+  int credits = 0;
+  for (final e in events) {
+    if (e.isCompletion) {
+      credits -= requiredCount;
+      if (credits < 0) credits = 0;
+    } else {
+      credits++;
+    }
+  }
+  return credits;
+}
+
+/// Exclusive end-of-day bound for [day], for use with [dependencyCredits].
+DateTime _endOfDay(DateTime day) => DateTime(day.year, day.month, day.day + 1);
 
 class DependencyHabitSpec extends HabitSpec {
   final int requiredCount;
@@ -442,14 +553,16 @@ class DependencyHabitSpec extends HabitSpec {
   @override
   bool isDueOnDay(DateTime day, List<DateTime> completions) {
     if (hashOccurrences.isEmpty) return false;
-    if (completions.isEmpty) return hashOccurrences.length >= requiredCount;
-
-    final lastCompletion = completions.reduce((a, b) => a.isAfter(b) ? a : b);
-    final sinceLastCompletion = hashOccurrences
-        .where((t) => t.isAfter(lastCompletion))
-        .length;
-    return sinceLastCompletion >= requiredCount;
+    return creditsOnDay(day, completions) >= requiredCount;
   }
+
+  /// Occurrences banked toward activation as of the end of [day].
+  int creditsOnDay(DateTime day, List<DateTime> completions) => dependencyCredits(
+        occurrences: hashOccurrences,
+        completions: completions,
+        requiredCount: requiredCount,
+        asOf: _endOfDay(day),
+      );
 
   @override
   int requiredOnDay(DateTime day, List<DateTime> completions) => 1;
@@ -477,14 +590,16 @@ class DependencyTagHabitSpec extends HabitSpec {
   @override
   bool isDueOnDay(DateTime day, List<DateTime> completions) {
     if (tagOccurrences.isEmpty) return false;
-    if (completions.isEmpty) return tagOccurrences.length >= requiredCount;
-
-    final lastCompletion = completions.reduce((a, b) => a.isAfter(b) ? a : b);
-    final sinceLastCompletion = tagOccurrences
-        .where((t) => t.isAfter(lastCompletion))
-        .length;
-    return sinceLastCompletion >= requiredCount;
+    return creditsOnDay(day, completions) >= requiredCount;
   }
+
+  /// Tagged entries banked toward activation as of the end of [day].
+  int creditsOnDay(DateTime day, List<DateTime> completions) => dependencyCredits(
+        occurrences: tagOccurrences,
+        completions: completions,
+        requiredCount: requiredCount,
+        asOf: _endOfDay(day),
+      );
 
   @override
   int requiredOnDay(DateTime day, List<DateTime> completions) => 1;
@@ -505,18 +620,57 @@ class CompositeHabitSpec extends HabitSpec {
 
   CompositeHabitSpec({required this.specs});
 
+  /// Month-of-year sub-specs act as a scope (when the habit applies) rather
+  /// than as an alternative rule, so `[november, 1d]` means "daily, but only
+  /// during November" instead of "daily, or once in November".
+  List<YearlyMonthHabitSpec> get _scopes =>
+      specs.whereType<YearlyMonthHabitSpec>().toList();
+
+  List<HabitSpec> get _rules =>
+      specs.where((s) => s is! YearlyMonthHabitSpec).toList();
+
+  bool _inScope(DateTime day) {
+    final scopes = _scopes;
+    if (scopes.isEmpty) return true;
+    return scopes.any((s) => s.requiredOnDay(day, const []) > 0);
+  }
+
   @override
   bool isDueOnDay(DateTime day, List<DateTime> completions) {
-    // Due if any sub-spec is due AND not already completed on this day
+    if (!_inScope(day)) return false;
+    // Due if any applicable sub-spec is due AND not already completed today
     final dayStart = _startOfDay(day);
     final completedToday = completions.where((c) => _startOfDay(c) == dayStart).length;
     if (completedToday > 0) return false;
-    return specs.any((s) => s.isDueOnDay(day, completions));
+    final rules = _rules.isEmpty ? specs : _rules;
+    return rules.any((s) => s.isDueOnDay(day, completions));
   }
 
   @override
   int requiredOnDay(DateTime day, List<DateTime> completions) {
-    return specs.any((s) => s.requiredOnDay(day, completions) > 0) ? 1 : 0;
+    if (!_inScope(day)) return 0;
+    final rules = _rules.isEmpty ? specs : _rules;
+    return rules.any((s) => s.requiredOnDay(day, completions) > 0) ? 1 : 0;
+  }
+
+  @override
+  ({DateTime start, DateTime end})? periodBounds(DateTime day) {
+    if (!_inScope(day)) return null;
+    final rules = _rules.isEmpty ? specs : _rules;
+    for (final s in rules) {
+      final bounds = s.periodBounds(day);
+      if (bounds != null) return bounds;
+    }
+    return null;
+  }
+
+  @override
+  int requiredInPeriod(DateTime day) {
+    final rules = _rules.isEmpty ? specs : _rules;
+    for (final s in rules) {
+      if (s.periodBounds(day) != null) return s.requiredInPeriod(day);
+    }
+    return 1;
   }
 
   @override

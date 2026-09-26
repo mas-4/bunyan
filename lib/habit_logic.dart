@@ -21,6 +21,18 @@ double calculateHabitStrength(
 
   final allCompletions = List<DateTime>.from(completions)..sort();
 
+  // Specs whose obligation spans a window (3/w, 1/m, november, ...) are
+  // scored per window, not per day — otherwise every day of an unfinished
+  // window counts as a miss.
+  if (_hasPeriods(spec, allCompletions, todayStart)) {
+    return _calculatePeriodicStrength(
+      spec,
+      allCompletions,
+      periodDays: periodDays,
+      todayStart: todayStart,
+    );
+  }
+
   DateTime startDay;
   if (periodDays == 0) {
     if (allCompletions.isEmpty) return 0;
@@ -53,14 +65,21 @@ double calculateHabitStrength(
         .toList();
 
     final isDue = spec.isDueOnDay(day, completionsUpToDay);
-    if (!isDue && spec.requiredOnDay(day, completionsUpToDay) == 0) continue;
+    final completed = spec.completedOnDay(day, allCompletions);
+    // A day the habit was done on counts even when the spec no longer reports
+    // it as due — for interval habits `requiredOnDay` mirrors `isDueOnDay`,
+    // so skipping those days left only missed days in the tally.
+    if (!isDue &&
+        completed == 0 &&
+        spec.requiredOnDay(day, completionsUpToDay) == 0) {
+      continue;
+    }
 
-    if (isDue || spec.completedOnDay(day, allCompletions) > 0) {
+    if (isDue || completed > 0) {
       totalDue++;
       if (!isDue) {
         satisfiedDue++;
-      } else if (spec.completedOnDay(day, allCompletions) > 0) {
-        final completed = spec.completedOnDay(day, allCompletions);
+      } else if (completed > 0) {
         final required = spec.requiredOnDay(day, completionsUpToDay);
         if (required > 0 && completed >= required) {
           satisfiedDue++;
@@ -71,6 +90,82 @@ double calculateHabitStrength(
 
   if (totalDue == 0) return 1.0;
   return satisfiedDue / totalDue;
+}
+
+/// Whether [spec] scores in windows longer than a day anywhere in the
+/// range being measured.
+bool _hasPeriods(HabitSpec spec, List<DateTime> completions, DateTime todayStart) {
+  if (spec.periodBounds(todayStart) != null) return true;
+  // A window spec may not apply today (a november habit in June), so probe
+  // the completions too.
+  for (final c in completions) {
+    if (spec.periodBounds(DateTime(c.year, c.month, c.day)) != null) return true;
+  }
+  return false;
+}
+
+/// Completion rate over windows: each window counts once, and a window that
+/// is still open only counts once it has been satisfied.
+double _calculatePeriodicStrength(
+  HabitSpec spec,
+  List<DateTime> sortedCompletions, {
+  required int periodDays,
+  required DateTime todayStart,
+}) {
+  DateTime startDay;
+  if (periodDays == 0) {
+    if (sortedCompletions.isEmpty) return 0;
+    final first = sortedCompletions.first;
+    startDay = DateTime(first.year, first.month, first.day);
+  } else {
+    startDay = todayStart.subtract(Duration(days: periodDays - 1));
+    if (sortedCompletions.isNotEmpty) {
+      final first = sortedCompletions.first;
+      final firstDay = DateTime(first.year, first.month, first.day);
+      if (startDay.isBefore(firstDay)) startDay = firstDay;
+    }
+  }
+
+  int totalPeriods = 0;
+  int satisfiedPeriods = 0;
+  final seen = <String>{};
+
+  for (var day = startDay;
+      !day.isAfter(todayStart);
+      day = DateTime(day.year, day.month, day.day + 1)) {
+    final bounds = spec.periodBounds(day);
+    if (bounds == null) continue; // day carries no obligation
+    if (!seen.add(bounds.start.toIso8601String())) continue;
+
+    var required = spec.requiredInPeriod(day);
+    if (required <= 0) continue;
+
+    // A window the range only partly covers (the one the habit started in)
+    // is prorated so a habit created mid-week doesn't open at 0%.
+    if (bounds.start.isBefore(startDay)) {
+      final total = bounds.end.difference(bounds.start).inDays;
+      final available = bounds.end.difference(startDay).inDays;
+      if (total > 0 && available > 0 && available < total) {
+        final scaled = (required * available / total).round();
+        required = scaled < 1 ? 1 : scaled;
+      }
+    }
+
+    final done = sortedCompletions
+        .where((c) => !c.isBefore(bounds.start) && c.isBefore(bounds.end))
+        .length;
+    final stillOpen = bounds.end.isAfter(todayStart);
+
+    if (done >= required) {
+      totalPeriods++;
+      satisfiedPeriods++;
+    } else if (!stillOpen) {
+      totalPeriods++;
+    }
+  }
+
+  if (totalPeriods == 0) return 1.0;
+  return satisfiedPeriods / totalPeriods;
 }
 
 double _calculateNegativeStrength(
@@ -162,6 +257,10 @@ int calculateCurrentStreak(
   final allCompletions = List<DateTime>.from(completions)..sort();
   if (allCompletions.isEmpty) return 0;
 
+  if (_hasPeriods(spec, allCompletions, todayStart)) {
+    return _calculatePeriodicStreak(spec, allCompletions, todayStart);
+  }
+
   int streak = 0;
 
   for (int i = 0; i <= 366; i++) {
@@ -192,4 +291,45 @@ int calculateCurrentStreak(
 String? extractFirstTag(String displayName) {
   final match = RegExp(r'#\S+').firstMatch(displayName);
   return match?.group(0);
+}
+
+/// Consecutive satisfied windows, walking back from the window containing
+/// today. The current window doesn't break the streak while it's still open.
+int _calculatePeriodicStreak(
+  HabitSpec spec,
+  List<DateTime> sortedCompletions,
+  DateTime todayStart,
+) {
+  final first = sortedCompletions.first;
+  final firstDay = DateTime(first.year, first.month, first.day);
+
+  int streak = 0;
+  var cursor = todayStart;
+
+  for (int guard = 0; guard < 800; guard++) {
+    if (cursor.isBefore(firstDay)) break;
+
+    final bounds = spec.periodBounds(cursor);
+    if (bounds == null) {
+      // Day outside any window (a november habit in June) — keep walking.
+      cursor = DateTime(cursor.year, cursor.month, cursor.day - 1);
+      continue;
+    }
+
+    final required = spec.requiredInPeriod(cursor);
+    final done = sortedCompletions
+        .where((c) => !c.isBefore(bounds.start) && c.isBefore(bounds.end))
+        .length;
+    final stillOpen = bounds.end.isAfter(todayStart);
+
+    if (done >= required) {
+      streak++;
+    } else if (!stillOpen) {
+      break;
+    }
+
+    cursor = DateTime(bounds.start.year, bounds.start.month, bounds.start.day - 1);
+  }
+
+  return streak;
 }
