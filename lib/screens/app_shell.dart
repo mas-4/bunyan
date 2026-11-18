@@ -21,6 +21,8 @@ import 'habit_screen.dart';
 import 'help_screen.dart';
 import 'todo_screen.dart';
 import 'stats_screen.dart';
+import 'notes_screen.dart';
+import 'day_overview_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -30,7 +32,7 @@ class AppShell extends StatefulWidget {
 }
 
 class AppShellState extends State<AppShell> {
-  /// Index into the bottom navigation tabs: habits, todos, log, stats.
+  /// Index into the bottom navigation tabs: habits, todos, log, notes, stats.
   int _tabIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -63,6 +65,9 @@ class AppShellState extends State<AppShell> {
   // Track which group keys are collapsed (key = first entry's timestamp ms)
   // New groups default to collapsed via the build logic
   final Set<int> _expandedGroups = {};
+
+  /// Last-built widget per tab; see `page()` in [build].
+  final List<Widget?> _pageCache = List.filled(5, null);
 
   // For scroll-to-entry from unique view
   WordEntry? _scrollToTarget;
@@ -208,7 +213,11 @@ class AppShellState extends State<AppShell> {
 
       for (int index in indicesToUpdate.reversed) {
         final entry = _entries[index];
-        _entries[index] = WordEntry(word: entry.word, timestamp: newDateTime);
+        final updated = WordEntry(word: entry.word, timestamp: newDateTime);
+        // Keep the cache's habit completion timestamps in step.
+        _cache.removeEntry(entry);
+        _cache.addEntry(updated);
+        _entries[index] = updated;
       }
 
       _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -906,22 +915,32 @@ class AppShellState extends State<AppShell> {
         final item = items[index];
         if (item.isDivider) {
           final dt = DateTimeFormatter(item.date!);
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    '${dt.weekDay} ${dt.date} · ${dt.daysAgo}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Colors.grey,
+          return InkWell(
+            onTap: () => _openDayOverview(item.date!),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${dt.weekDay} ${dt.date} · ${dt.daysAgo}',
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                color: Colors.grey,
+                              ),
                         ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, size: 14, color: Colors.grey),
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(child: Divider()),
-              ],
+                  Expanded(child: Divider()),
+                ],
+              ),
             ),
           );
         }
@@ -1284,7 +1303,23 @@ class AppShellState extends State<AppShell> {
   }
 
   Future<void> _editEntry(WordEntry entryToEdit) async {
-    Navigator.push(
+    // Notes get their own editor so line breaks and quick tags round-trip.
+    if (isNoteText(entryToEdit.word)) {
+      await openNoteEditor(
+        context,
+        existing: entryToEdit,
+        quickTags: buildQuickTags(
+          entries: _entries,
+          cache: _cache,
+          hotbarTags: _hotbarTags,
+        ),
+        onAdd: (word) => _addEntry(word, clearController: false),
+        onUpdate: _updateEntry,
+        onDelete: _deleteEntry,
+      );
+      return;
+    }
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditEntryScreen(
@@ -1664,6 +1699,20 @@ class AppShellState extends State<AppShell> {
               _groupingWindow = groupingWindow;
             });
           },
+        ),
+      ),
+    );
+  }
+
+  void _openDayOverview(DateTime day) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DayOverviewScreen(
+          getEntries: () => _entries,
+          initialDay: day,
+          onEditEntry: _editEntry,
+          onOpenEntryStats: _openEntryStats,
         ),
       ),
     );
@@ -2082,8 +2131,19 @@ class AppShellState extends State<AppShell> {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final pages = [
-      HabitScreen(
+    // Only the visible tab is rebuilt. Hidden tabs keep their previous widget
+    // instance, which Flutter skips entirely, so a keystroke in Log or saving
+    // a note no longer re-runs the habit grid, stats, etc. A tab gets a fresh
+    // widget (and so current data) as soon as it becomes visible again.
+    Widget page(int index, Widget Function() build) {
+      if (index == _tabIndex || _pageCache[index] == null) {
+        _pageCache[index] = build();
+      }
+      return _pageCache[index]!;
+    }
+
+    final builders = <Widget Function()>[
+      () => HabitScreen(
         entries: _entries,
         cache: _cache,
         onOpenMenu: _openDrawer,
@@ -2091,7 +2151,7 @@ class AppShellState extends State<AppShell> {
         onAddEntryWithTimestamp: _addEntryWithTimestamp,
         onDeleteEntry: _deleteEntry,
       ),
-      TodoScreen(
+      () => TodoScreen(
         entries: _entries,
         cache: _cache,
         onOpenMenu: _openDrawer,
@@ -2100,14 +2160,27 @@ class AppShellState extends State<AppShell> {
         onDeleteEntry: _deleteEntry,
         onEditEntry: _editEntry,
       ),
-      _buildLogPage(context),
-      StatsScreen(
+      () => _buildLogPage(context),
+      () => NotesScreen(
+        entries: _entries,
+        cache: _cache,
+        hotbarTags: _hotbarTags,
+        onOpenMenu: _openDrawer,
+        onAddEntry: (word) => _addEntry(word, clearController: false),
+        onUpdateEntry: _updateEntry,
+        onDeleteEntry: _deleteEntry,
+      ),
+      () => StatsScreen(
         entries: _entries,
         windowMinutes: _aroundNowWindow,
         onOpenMenu: _openDrawer,
         onAddEntry: (word) => _addEntry(word, clearController: false),
         onOpenEntryStats: _openEntryStats,
+        onOpenDayOverview: () => _openDayOverview(DateTime.now()),
       ),
+    ];
+    final pages = [
+      for (var i = 0; i < builders.length; i++) page(i, builders[i]),
     ];
 
     return Stack(
@@ -2138,6 +2211,11 @@ class AppShellState extends State<AppShell> {
                 icon: Icon(Icons.subject_outlined),
                 selectedIcon: Icon(Icons.subject),
                 label: 'Log',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.sticky_note_2_outlined),
+                selectedIcon: Icon(Icons.sticky_note_2),
+                label: 'Notes',
               ),
               NavigationDestination(
                 icon: Icon(Icons.insights_outlined),

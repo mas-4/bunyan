@@ -440,8 +440,11 @@ class _HabitScreenState extends State<HabitScreen> {
     // Only consider completions up to this day so future completions
     // don't mask missed days (e.g. a 1d habit completed today shouldn't
     // make yesterday show "not due").
-    final completionsUpToDay = habit.completions.where((c) =>
-        DateTime(c.year, c.month, c.day).compareTo(dayStart) <= 0).toList();
+    // `c < start of next day` ⇔ `startOfDay(c) <= dayStart`, without
+    // allocating a DateTime per completion per cell.
+    final nextDay = DateTime(day.year, day.month, day.day + 1);
+    final completionsUpToDay =
+        habit.completions.where((c) => c.isBefore(nextDay)).toList();
     final isDue = habit.spec.isDueOnDay(day, completionsUpToDay);
 
     // Has completions — tap to add more, hold to remove

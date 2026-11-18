@@ -1,5 +1,37 @@
 import 'utils.dart';
 
+/// Number of entries in ascending [sorted] that are strictly before [bound].
+int _countBefore(List<DateTime> sorted, DateTime bound) {
+  var lo = 0;
+  var hi = sorted.length;
+  while (lo < hi) {
+    final mid = (lo + hi) >> 1;
+    if (sorted[mid].isBefore(bound)) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+/// Slices of ascending [sorted] for the calendar day containing [day]:
+/// everything up to the end of that day, and just that day's entries.
+///
+/// Equivalent to filtering on `startOfDay(c) <= day` / `startOfDay(c) == day`
+/// but O(log n) with no per-element allocation — the streak and strength
+/// walks call this once per day.
+({List<DateTime> upTo, List<DateTime> onDay}) _daySlices(
+  List<DateTime> sorted,
+  DateTime day,
+) {
+  final start = DateTime(day.year, day.month, day.day);
+  final next = DateTime(day.year, day.month, day.day + 1);
+  final from = _countBefore(sorted, start);
+  final to = _countBefore(sorted, next);
+  return (upTo: sorted.sublist(0, to), onDay: sorted.sublist(from, to));
+}
+
 /// Compute strength (completion rate) for a habit.
 ///
 /// [periodDays] == 0 means all-time (from first completion to today).
@@ -59,13 +91,13 @@ double calculateHabitStrength(
   for (var day = startDay;
       !day.isAfter(todayStart);
       day = day.add(const Duration(days: 1))) {
-    final completionsUpToDay = allCompletions
-        .where((c) =>
-            DateTime(c.year, c.month, c.day).compareTo(day) <= 0)
-        .toList();
+    final slices = _daySlices(allCompletions, day);
+    final completionsUpToDay = slices.upTo;
 
     final isDue = spec.isDueOnDay(day, completionsUpToDay);
-    final completed = spec.completedOnDay(day, allCompletions);
+    // Negative specs returned above; every remaining spec counts only the
+    // completions on [day], so passing that day's slice is equivalent.
+    final completed = spec.completedOnDay(day, slices.onDay);
     // A day the habit was done on counts even when the spec no longer reports
     // it as due — for interval habits `requiredOnDay` mirrors `isDueOnDay`,
     // so skipping those days left only missed days in the tally.
@@ -265,14 +297,12 @@ int calculateCurrentStreak(
 
   for (int i = 0; i <= 366; i++) {
     final day = DateTime(todayStart.year, todayStart.month, todayStart.day - i);
-    final completionsUpToDay = allCompletions
-        .where((c) => DateTime(c.year, c.month, c.day).compareTo(day) <= 0)
-        .toList();
-    final isDue = spec.isDueOnDay(day, completionsUpToDay);
+    final slices = _daySlices(allCompletions, day);
+    final isDue = spec.isDueOnDay(day, slices.upTo);
 
     if (!isDue) continue; // Skip off-days
 
-    final completed = spec.completedOnDay(day, allCompletions);
+    final completed = spec.completedOnDay(day, slices.onDay);
     if (completed > 0) {
       streak++;
     } else if (day == todayStart) {

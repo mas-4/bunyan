@@ -18,9 +18,16 @@ class EntryFrequencyCache {
   /// Content hash -> sorted list of completion timestamps for habit tracking
   final Map<String, List<DateTime>> _habitCompletions = {};
 
+  int _revision = 0;
+
+  /// Bumped on every change, so screens can memoize work derived from the
+  /// entry list and redo it only when the data actually changed.
+  int get revision => _revision;
+
   /// Build the cache from scratch using a list of entries.
   /// Call this on app load.
   void buildFromEntries(List<WordEntry> entries) {
+    _revision++;
     _wordCounts.clear();
     _tagCounts.clear();
     _doneHashes.clear();
@@ -94,6 +101,7 @@ class EntryFrequencyCache {
   }
 
   void _addEntryToCache(WordEntry entry) {
+    _revision++;
     // Update word count
     _wordCounts[entry.word] = (_wordCounts[entry.word] ?? 0) + 1;
 
@@ -113,6 +121,7 @@ class EntryFrequencyCache {
   }
 
   void _removeEntryFromCache(WordEntry entry) {
+    _revision++;
     // Update word count
     final currentCount = _wordCounts[entry.word] ?? 0;
     if (currentCount <= 1) {

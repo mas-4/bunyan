@@ -31,11 +31,14 @@ The app is organized into multiple files for maintainability:
 - **lib/utils.dart**: Utility functions (file operations, backup management, settings, habit DSL, todo/pin helpers)
 - **lib/frequency_cache.dart**: `EntryFrequencyCache` class for O(1) frequency lookups
 - **lib/habit_logic.dart**: Habit strength, streak, and next-due calculations
+- **lib/day_stats.dart**: Pure per-day statistics (`computeDayStats`, `dailyEntryCounts`) behind the day overview
 - **lib/screens/**: Screen widgets
-  - `app_shell.dart`: Owns all entry state and CSV I/O; hosts the four tabs, the drawer, and the Log tab UI
+  - `app_shell.dart`: Owns all entry state and CSV I/O; hosts the five tabs, the drawer, and the Log tab UI
   - `habit_screen.dart`: Habits tab (default) — habit grid with day cells
   - `todo_screen.dart`: Todos tab — open/completed `#todo` entries, scheduled first
+  - `notes_screen.dart`: Notes tab, `NoteEditorScreen` with quick-tag chips, `openNoteEditor`/`buildQuickTags` helpers
   - `stats_screen.dart`: Stats tab — totals, around-now suggestions, most-logged entries
+  - `day_overview_screen.dart`: One day's stats, hourly chart, and timeline (from Log day dividers / Stats)
   - `habit_detail_screen.dart`: Per-habit detail with calendar and history
   - `edit_entry_screen.dart`: Edit individual entries with tag suggestions
   - `entry_stats_screen.dart`: Statistics for a specific entry word
@@ -47,8 +50,8 @@ The app is organized into multiple files for maintainability:
 
 ### Navigation
 `AppShellState` is the single owner of `_entries`, the frequency cache, and all
-file writes. It renders a `NavigationBar` over an `IndexedStack` of four pages
-(Habits, Todos, Log, Stats); each page is its own `Scaffold` and receives
+file writes. It renders a `NavigationBar` over an `IndexedStack` of five pages
+(Habits, Todos, Log, Notes, Stats); each page is its own `Scaffold` and receives
 entries plus callbacks (`onAddEntry`, `onDeleteEntry`, `onCompleteTodo`, ...)
 rather than touching the CSV itself. The drawer (config, import/export,
 backups, reset) lives on the shell and pages open it via `onOpenMenu`.
@@ -67,6 +70,7 @@ The cache is built once on app load and updated incrementally when entries chang
 - **Bulk Edit**: Long-press entries to enter bulk selection mode for batch datetime updates
 - **Swipe Actions**: Swipe left to delete, swipe right to add again
 - **Import/Export**: Share CSV files or import existing data
+- **Notes**: Entries tagged `#note`. Line breaks are stored as ` U+2028 ` (space-padded) so the one-entry-per-line CSV holds; use `buildNoteText` / `parseNote` / `decodeNoteLines` in utils rather than touching the raw text. `_editEntry` routes notes to the note editor.
 
 ### Data Flow
 1. User types in TextField, optionally using tag characters for suggestions

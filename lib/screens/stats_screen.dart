@@ -24,6 +24,7 @@ class StatsScreen extends StatelessWidget {
   final VoidCallback? onOpenMenu;
   final Future<void> Function(String word) onAddEntry;
   final void Function(String word) onOpenEntryStats;
+  final VoidCallback? onOpenDayOverview;
 
   const StatsScreen({
     super.key,
@@ -32,6 +33,7 @@ class StatsScreen extends StatelessWidget {
     required this.onAddEntry,
     required this.onOpenEntryStats,
     this.onOpenMenu,
+    this.onOpenDayOverview,
   });
 
   /// Entries logged at roughly this time of day, scored by frequency
@@ -209,6 +211,14 @@ class StatsScreen extends StatelessWidget {
                   icon: const Icon(Icons.menu),
                   onPressed: onOpenMenu,
                 ),
+          actions: [
+            if (onOpenDayOverview != null)
+              IconButton(
+                icon: const Icon(Icons.today),
+                tooltip: 'Day overview',
+                onPressed: onOpenDayOverview,
+              ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Around now'),

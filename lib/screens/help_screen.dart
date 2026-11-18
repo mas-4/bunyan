@@ -11,13 +11,37 @@ class HelpScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           _section(context, 'Tabs', Icons.tab, [
-            _p('Bunyan has four tabs along the bottom:'),
+            _p('Bunyan has five tabs along the bottom:'),
             _bullet('Habits — the grid of @habit entries and their day cells'),
             _bullet('Todos — every open #todo, scheduled ones first'),
             _bullet('Log — the full timestamped entry list and quick entry field'),
+            _bullet('Notes — longer, multi-line #note entries'),
             _bullet('Stats — totals, what you log around this time, most logged'),
             _p('Import, export, backups, and configuration live in the menu '
                 'behind the icon at the top left of any tab.'),
+          ]),
+          const SizedBox(height: 24),
+          _section(context, 'Notes', Icons.sticky_note_2_outlined, [
+            _p('The Notes tab works like Log: write in the big box at the top '
+                'and tap send. The first line becomes the note\'s title.'),
+            _p('Quick tags sit under the box — tap to attach a tag, tap again '
+                'to remove it, or + Tag to make a new one. Tags you use on '
+                'notes come first, then your hotbar, then your most-used tags.'),
+            _p('Picked tags also filter the list below, and they stay picked '
+                'after you save so a run of notes can share them. Clear tags '
+                'resets them. Tap a note to edit it full screen.'),
+            _p('A note is a regular entry tagged #note, so it also appears in '
+                'Log, search, and exports:'),
+            _code('Call with Dana\nShe can do Thursday #note #work'),
+          ]),
+          const SizedBox(height: 24),
+          _section(context, 'Day overview', Icons.today, [
+            _p('Tap any day divider in Log, or the calendar icon on Stats, to '
+                'see one day at a glance: entry counts against your 28-day '
+                'average, active span, habits, todos, notes, activity by hour, '
+                'tags, repeats, anything scheduled with #when, and a timeline.'),
+            _p('Swipe sideways or use the arrows and week strip to move '
+                'between days.'),
           ]),
           const SizedBox(height: 24),
           _section(context, 'Todos', Icons.check_circle_outline, [

@@ -219,8 +219,13 @@ class IntervalHabitSpec extends HabitSpec {
   bool isDueOnDay(DateTime day, List<DateTime> completions) {
     final dayStart = _startOfDay(day);
     if (completions.isEmpty) return true;
-    final sorted = List<DateTime>.from(completions)..sort();
-    final lastCompletion = _startOfDay(sorted.last);
+    // Latest completion without copying + sorting (this runs once per day in
+    // the streak/strength walks).
+    var latest = completions.first;
+    for (final c in completions) {
+      if (c.isAfter(latest)) latest = c;
+    }
+    final lastCompletion = _startOfDay(latest);
     final diff = dayStart.difference(lastCompletion).inDays;
     return diff >= _intervalDays;
   }
@@ -1081,6 +1086,130 @@ String buildDoneText(String todoText, DateTime todoTimestamp) {
   final cleaned =
       todoText.replaceAll(RegExp(r'#todo', caseSensitive: false), '').trim();
   return '#done $hash $cleaned';
+}
+
+// ---------------------------------------------------------------------------
+// Tag extraction
+// ---------------------------------------------------------------------------
+
+/// Tags the app manages itself; they're hidden from quick-tag pickers and
+/// per-day tag breakdowns because they have dedicated UI.
+const Set<String> systemTags = {
+  '#note',
+  '#todo',
+  '#done',
+  '#pin',
+  '#when',
+  '@habit',
+};
+
+bool isSystemTag(String tag) => systemTags.contains(tag.toLowerCase());
+
+/// Tags (words starting with a tag leader) in [text], in order of first
+/// appearance, de-duplicated case-insensitively. `#when[...]` and
+/// `@habit[...]` collapse to `#when` / `@habit`, matching the frequency cache.
+List<String> extractTags(String text) {
+  final collapsed = text
+      .replaceAll(whenTagRegex, '#when')
+      .replaceAll(habitTagRegex, '@habit');
+  final seen = <String>{};
+  final tags = <String>[];
+  for (final w in collapsed.split(RegExp(r'\s+'))) {
+    if (w.length > 1 && tagLeaders.contains(w[0]) && seen.add(w.toLowerCase())) {
+      tags.add(w);
+    }
+  }
+  return tags;
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+//
+// A note is an ordinary entry carrying `#note`. The CSV is one entry per line,
+// so line breaks inside a note are stored as U+2028 (LINE SEPARATOR) padded
+// with spaces — the padding keeps a tag at the start of a line a separate
+// space-delimited word, so the frequency cache still counts it.
+
+const String noteTag = '#note';
+const String noteLineBreak = ' ';
+
+final RegExp _noteTagRegex = RegExp(r'(^|\s)#note(?=\s|$)', caseSensitive: false);
+final RegExp _encodedBreakRegex = RegExp(' ?$noteLineBreak ?');
+
+/// True when the entry text carries a standalone `#note` tag.
+bool isNoteText(String text) => _noteTagRegex.hasMatch(text);
+
+/// Turn stored note line separators back into `\n`.
+String decodeNoteLines(String text) => text.replaceAll(_encodedBreakRegex, '\n');
+
+/// Tags on a note for display/filtering, without `#note` itself.
+List<String> noteDisplayTags(String text) =>
+    extractTags(text).where((t) => t.toLowerCase() != noteTag).toList();
+
+/// Build the stored entry text for a note: `<body> #note <tags...>`.
+/// Tags already written inline in [body] aren't repeated.
+String buildNoteText(String body, Iterable<String> tags) {
+  final withoutNoteTag = body
+      .replaceAll('\r\n', '\n')
+      .replaceAllMapped(_noteTagRegex, (m) => m.group(1)!);
+  final lines = withoutNoteTag.trim().split('\n').map((l) => l.trimRight());
+  final encodedBody = lines.join(' $noteLineBreak ').trim();
+
+  final present = extractTags(withoutNoteTag).map((t) => t.toLowerCase()).toSet();
+  final extra = <String>[];
+  for (final tag in tags) {
+    final t = tag.trim();
+    if (t.isEmpty || t.toLowerCase() == noteTag) continue;
+    if (present.add(t.toLowerCase())) extra.add(t);
+  }
+  return [if (encodedBody.isNotEmpty) encodedBody, noteTag, ...extra].join(' ');
+}
+
+/// Split stored note text back into its body and the tags that follow
+/// `#note` (the ones picked as quick tags). Inline tags stay in the body.
+({String body, List<String> tags}) parseNote(String text) {
+  final decoded = decodeNoteLines(text);
+  final matches = _noteTagRegex.allMatches(decoded).toList();
+  if (matches.isEmpty) return (body: decoded.trim(), tags: <String>[]);
+
+  final last = matches.last;
+  final before = decoded
+      .substring(0, last.start)
+      .replaceAllMapped(_noteTagRegex, (m) => m.group(1)!);
+  var after = decoded.substring(last.end);
+
+  final tags = <String>[];
+  for (final m in whenTagRegex.allMatches(after)) {
+    tags.add(m.group(0)!);
+  }
+  after = after.replaceAll(whenTagRegex, ' ');
+
+  final rest = <String>[];
+  for (final w in after.split(RegExp(r'\s+'))) {
+    if (w.isEmpty) continue;
+    if (w.length > 1 && tagLeaders.contains(w[0])) {
+      tags.add(w);
+    } else {
+      rest.add(w);
+    }
+  }
+  final body = [before.trim(), rest.join(' ')].where((s) => s.isNotEmpty).join(' ');
+  return (body: body, tags: tags);
+}
+
+/// Human-readable text for an entry: notes are decoded and `#done <hash>`
+/// prefixes are dropped.
+String entryDisplayText(String word) {
+  if (word.toLowerCase().startsWith('#done ')) {
+    final parts = word.split(' ');
+    return parts.length > 2 ? parts.sublist(2).join(' ') : word;
+  }
+  if (isNoteText(word)) {
+    final note = parseNote(word);
+    return note.body.isNotEmpty ? note.body : note.tags.join(' ');
+  }
+  return word.trim();
 }
 
 /// Strip tags (leading-char words) from text for display purposes.

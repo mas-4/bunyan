@@ -7,3 +7,5 @@ export 'screens/tag_manager_screen.dart';
 export 'screens/habit_screen.dart';
 export 'screens/todo_screen.dart';
 export 'screens/stats_screen.dart';
+export 'screens/notes_screen.dart';
+export 'screens/day_overview_screen.dart';
